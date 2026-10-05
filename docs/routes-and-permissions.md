@@ -1,0 +1,22 @@
+# Routes and permissions
+
+The route table below maps each public operation to the permission and signed request profile it uses. Read permissions and order permissions are evaluated for each call.
+
+| SDK call                                                    | Route                                                                      | Permission                                                     | Signed profile        | Body       |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------- | ---------- |
+| `profile.get()`                                             | `GET /v1/profile`                                                          | `profile:read`                                                 | SafeRead              | none       |
+| `wallets.list()` / `listPage()`                             | `GET /v1/wallets`                                                          | `wallets:read`                                                 | SafeRead              | none       |
+| `wallets.get(walletId)`                                     | `GET /v1/wallets/{walletId}`                                               | `wallets:read`                                                 | SafeRead              | none       |
+| `catalogue.listCategories()` / `listCategoriesPage()`       | `GET /v1/wallets/{walletId}/catalog/categories`                            | `catalogue:read`                                               | SafeRead              | none       |
+| `catalogue.listSubcategories()` / `listSubcategoriesPage()` | `GET /v1/wallets/{walletId}/catalog/categories/{categoryId}/subcategories` | `catalogue:read`                                               | SafeRead              | none       |
+| `catalogue.getSubcategory()`                                | `GET /v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}`         | `catalogue:read`                                               | SafeRead              | none       |
+| `catalogue.listCards()` / `listCardsPage()`                 | `GET /v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}/cards`   | `catalogue:read`                                               | SafeRead              | none       |
+| `orders.create()` / `resume()`                              | `POST /v1/wallets/{walletId}/orders`                                       | `orders:create`                                                | OrderMutation         | order JSON |
+| `orders.get(operationId)`                                   | `GET /v1/orders/{operationId}`                                             | `orders:read`, or `orders:create` for this application's order | SafeRead              | none       |
+| `ownedCards.list()` / `listPage()`                          | `GET /v1/wallets/{walletId}/cards`                                         | `cards:read`                                                   | SafeRead              | none       |
+| `ownedCards.get()`                                          | `GET /v1/wallets/{walletId}/cards/{soldCardId}`                            | `cards:read`                                                   | SafeRead              | none       |
+| `ownedCards.reveal()`                                       | `POST /v1/wallets/{walletId}/cards/{soldCardId}/reveal`                    | `cards:reveal`                                                 | BodylessNonceMutation | zero bytes |
+| `ownedCards.revealInvoice()`                                | `POST /v1/wallets/{walletId}/invoices/{invoiceId}/cards/reveal`            | `cards:reveal`                                                 | BodylessNonceMutation | zero bytes |
+| `diagnostics.checkSignature()`                              | `POST /v1/diagnostics/signature`                                           | `diagnostics:use`                                              | BodylessNonceMutation | `{}`       |
+
+The full published route and error contracts are checked against the SDK's route table in the contract drift tests. `list()` follows continuation cursors; use a `listPage({ cursor, signal })` method when the application needs to control page boundaries. Omit `cursor` for the first page and pass `signal` to cancel the request.

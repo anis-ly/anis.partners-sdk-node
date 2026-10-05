@@ -1,0 +1,70 @@
+{
+  "name": "@anis-ly/partners",
+  "version": "1.0.0",
+  "description": "The Node.js SDK for the Anis Partner API — signed requests, verified responses, typed operations.",
+  "license": "MIT",
+  "author": "Aniscom for Technical Services (Anis) <support@anis.ly>",
+  "homepage": "https://developers.anis.ly",
+  "bugs": {
+    "email": "support@anis.ly"
+  },
+  "keywords": [
+    "anis",
+    "libya",
+    "partner-api",
+    "http-signatures",
+    "rfc9421",
+    "sdk"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepack": "npm run build",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "generate:errors": "node tools/generate-errors.mjs",
+    "check": "prettier --check . && npm run build && npm run typecheck && npm run lint && npm run test"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "eslint": "^10.12.0",
+    "prettier": "^3.8.4",
+    "tsup": "^8.5.1",
+    "typescript": "~5.9",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.3"
+  }
+}

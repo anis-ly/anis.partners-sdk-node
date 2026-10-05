@@ -1,0 +1,6 @@
+{
+  "authority": "https://partners.example",
+  "keyFile": "partner-key.pem",
+  "keyId": "",
+  "ordersFolder": "orders"
+}
