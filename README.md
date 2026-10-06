@@ -2,6 +2,13 @@
 
 The `@anis-ly/partners` package calls the Anis Partner API with signed requests, verifies every response before parsing it, and returns typed models and order outcomes. It targets Node.js 22 and later.
 
+> **Disclaimer.** This SDK is an optional helper provided free of charge under the MIT License, "as is", without
+> warranty of any kind. Anis (Aniscom for Technical Services) accepts no responsibility or liability for its use or for
+> any loss arising from it. You remain responsible for your own integration — recording orders before you send them,
+> recovery, key custody and testing. The source code is public: read it to understand exactly what it does before you
+> rely on it. You do not need an SDK — you can integrate directly with the Anis Partner API using the documentation at
+> https://developers.anis.ly.
+
 ```bash
 npm install @anis-ly/partners
 ```

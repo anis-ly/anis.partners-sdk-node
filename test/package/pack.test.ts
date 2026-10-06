@@ -11,10 +11,13 @@ describe('npm package contents', () => {
     };
     expect(packageJson.scripts.prepack).toBe('npm run build');
 
+    // Build first and pack with scripts off: the build tool prints its own bracketed log lines to stdout, which
+    // would otherwise be mixed into the JSON file list npm prints.
+    execFileSync('npm', ['run', 'build'], { encoding: 'utf8', stdio: 'pipe' });
     const cachePath = await mkdtemp(join(tmpdir(), 'anis-npm-pack-'));
     let output: string;
     try {
-      output = execFileSync('npm', ['pack', '--dry-run', '--json', '--cache', cachePath], {
+      output = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts', '--cache', cachePath], {
         encoding: 'utf8',
         stdio: 'pipe',
       });

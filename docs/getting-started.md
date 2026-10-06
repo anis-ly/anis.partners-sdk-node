@@ -1,5 +1,12 @@
 # Getting started
 
+> **Disclaimer.** This SDK is an optional helper provided free of charge under the MIT License, "as is", without
+> warranty of any kind. Anis (Aniscom for Technical Services) accepts no responsibility or liability for its use or for
+> any loss arising from it. You remain responsible for your own integration — recording orders before you send them,
+> recovery, key custody and testing. The source code is public: read it to understand exactly what it does before you
+> rely on it. You do not need an SDK — you can integrate directly with the Anis Partner API using the documentation at
+> https://developers.anis.ly.
+
 ## 1. Enroll a key
 
 An Anis application needs an active P-256 signing key. Anis provides an invitation id and a single-use enrollment token. Generate the key pair and protect its private half before submitting the public half. The SDK verifies that the returned thumbprint matches the submitted key, proves possession, and gives you a safety code. Anis staff call your technical contact and ask them to read that code before confirming the key. The key signs API requests after its state becomes `active`.
