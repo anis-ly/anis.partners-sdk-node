@@ -36,6 +36,19 @@ describe('partner response verifier', () => {
     );
     await expect(verifier.verify(response)).rejects.toMatchObject({ failure: 'created_out_of_window' });
   });
+  it('classifies a created value above the safe integer range as outside the freshness window', async () => {
+    const verifier = new PartnerResponseVerifier(
+      { get: () => Promise.resolve(fixture.signingKeys), refresh: () => Promise.resolve(fixture.signingKeys) },
+      { now: () => new Date(fixture.verifyAt * 1000) },
+    );
+    const signatureInput = response.headers['Signature-Input'];
+    if (signatureInput === undefined) throw new Error('Fixture signature input is missing.');
+    const updated = signatureInput.replace(/created=\d+/, 'created=9007199254740993');
+
+    await expect(
+      verifier.verify({ ...response, headers: { ...response.headers, 'Signature-Input': updated } }),
+    ).rejects.toMatchObject({ failure: 'created_out_of_window' });
+  });
   it('rejects a well-sized off-curve public key', async () => {
     const keys = {
       keys: [

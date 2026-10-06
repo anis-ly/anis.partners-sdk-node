@@ -130,8 +130,8 @@ export function parseRevealedCredential(json: unknown): RevealedCredential {
   const invoiceId = optionalUuid(object, 'invoiceId', 'RevealedCredential');
   const card = parseOptionalProduct(object, 'card');
   const purchasedAt = optionalTimestamp(object, 'purchasedAt', 'RevealedCredential');
-  return {
-    soldCardId: requiredUuid(object, 'soldCardId', 'RevealedCredential'),
+  const credential: RevealedCredential = {
+    soldCardId: optionalUuid(object, 'soldCardId', 'RevealedCredential') ?? '00000000-0000-0000-0000-000000000000',
     ...(serialNumber === undefined ? {} : { serialNumber }),
     ...(voucher === undefined ? {} : { voucher }),
     ...(revealedAt === undefined ? {} : { revealedAt }),
@@ -146,6 +146,9 @@ export function parseRevealedCredential(json: unknown): RevealedCredential {
       return `RevealedCredential { SoldCardId = ${this.soldCardId}, Secret = <redacted> }`;
     },
   };
+  Object.defineProperty(credential, 'toString', { enumerable: false });
+  Object.defineProperty(credential, inspect.custom, { enumerable: false });
+  return credential;
 }
 
 /** Parses an invoice reveal collection. */

@@ -4,6 +4,7 @@ import { parseRevealedCredential, parseRevealedCredentialCollection } from '../.
 import { contentDigestOf } from '../../src/signing/content-digest.js';
 import { KeyedSigner } from '../../src/signing/keyed-signer.js';
 import { PartnerRequestSigner } from '../../src/signing/partner-request-signer.js';
+import { AnisApiError } from '../../src/errors/anis-api-error.js';
 
 const credentialJson = {
   soldCardId: '6e5b2d70-4416-4a6e-900a-5528803a6a7d',
@@ -31,6 +32,15 @@ describe('native inspection redaction', () => {
     expect(output).not.toContain(credentialJson.voucher);
     expect(JSON.stringify(collection)).toContain(credentialJson.voucher);
     expect(collection.items[0]?.toString()).toContain('<redacted>');
+    expect(() => structuredClone(collection)).not.toThrow();
+  });
+
+  it('redacts API refusal details from native inspection', () => {
+    const error = new AnisApiError({ status: 400, title: 'voucher-secret-34', detail: 'serial-secret-12' }, 400);
+    const output = inspect(error);
+    expect(output).not.toContain('voucher-secret-34');
+    expect(output).not.toContain('serial-secret-12');
+    expect(JSON.stringify(error)).not.toContain('voucher-secret-34');
   });
 
   it('redacts signature, nonce, and base when signed headers are inspected', async () => {

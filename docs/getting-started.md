@@ -4,7 +4,7 @@
 
 An Anis application needs an active P-256 signing key. Anis provides an invitation id and a single-use enrollment token. Generate the key pair and protect its private half before submitting the public half. The SDK verifies that the returned thumbprint matches the submitted key, proves possession, and gives you a safety code. Anis staff call your technical contact and ask them to read that code before confirming the key. The key signs API requests after its state becomes `active`.
 
-The console sample's `enrol` command performs these steps and creates the private PEM file with owner-only permissions. You can also use the enrollment client directly:
+The console sample's `enrol` command performs these steps and creates the private PEM file with owner-only permissions from the moment it is created. Confirm the proof state is `accepted`, then wait for Anis staff to confirm the safety code before sending API requests. You can also use the enrollment client directly:
 
 ```ts
 import { generateKeyPairSync } from 'node:crypto';
@@ -45,6 +45,8 @@ console.log((await enrollment.getStatus()).state); // wait until active
 
 The enrollment token is a secret. Do not put it in source control, command history, or logs. A failed proof is a normal answer with a `proofState`; check it before asking Anis to restart enrollment. If the challenge expires, contact Anis for a new invitation.
 
+The enrollment state progresses through `pendingProof`, `pendingApproval`, and `active`; `unavailable` means the invitation or key cannot proceed. A proof challenge is valid for 30 minutes and permits five failed proof attempts. A failed proof is not itself an enrollment refusal. `invitation_invalid`, `challenge_expired`, `key_proof_invalid`, and `key_duplicate` are enrollment refusals; do not retry the same refused step. If the submit-key answer is lost or returns `key_duplicate`, read the enrolment status first; otherwise ask Anis staff to restart the enrolment. The `key_duplicate` refusal does not return existing enrollment details. The private half is saved first so a lost response never leaves you without the key needed to finish proof. `notBefore` and `expiresAt` define a validity interval, not a renewal schedule. Agree the network source addresses with Anis staff, and when asking for help provide the response request id.
+
 ## 2. Configure the client
 
 ```ts
@@ -68,7 +70,7 @@ const client = AnisPartnersClient.create({
 });
 ```
 
-The signature lifetime is limited to 1–60 seconds. The API may accept a wider window, but the SDK verifies answers only within 60 seconds of its clock; longer request signatures could make a valid order answer too old to accept. Keep the host clock synchronized. Requests do not retry automatically: a host retry policy can repeat a reveal or obscure the one-time credentials from an order.
+The signature lifetime is limited to 1–60 seconds. The API may accept a wider window, but the SDK verifies answers only within 60 seconds of its clock; longer request signatures could make a valid order answer too old to accept. Keep the host clock synchronized. Requests do not retry automatically: a host retry policy can repeat a reveal or obscure the one-time credentials from an order. Never configure the injected fetch to retry a request; it would reuse the same nonce. Call the matching SDK operation again to recover an order.
 
 ## 3. Make a first call
 
@@ -78,6 +80,8 @@ console.log(profile.application?.scopes); // permissions effective for this call
 ```
 
 Permissions are evaluated on each request. Read the profile when you need to understand current access instead of assuming a permission remains unchanged.
+
+For each new order, generate a fresh UUID v4 with `crypto.randomUUID()`. Persist that id and the exact request before calling `orders.create`; reuse both only when recovering that purchase.
 
 ## When a signature will not verify
 

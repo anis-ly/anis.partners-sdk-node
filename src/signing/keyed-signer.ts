@@ -16,7 +16,7 @@ export class KeyedSigner implements RequestSigner {
     private readonly signer: P256Signer,
     keyId: string,
   ) {
-    this.keyId = canonicalUuid(keyId);
+    this.keyId = canonicalUuid(keyId, 'keyId');
   }
   /** Signs exact bytes through partner-owned key custody without exposing key material. */
   sign(data: Uint8Array): Promise<Uint8Array> {

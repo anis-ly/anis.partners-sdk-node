@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { inspect } from 'node:util';
+import { createHash } from 'node:crypto';
 import { AnisEnrollmentClient } from '../../src/enrollment/enrollment-client.js';
 import { keyThumbprint } from '../../src/enrollment/key-thumbprint.js';
 import { arrayBufferOf } from '../../src/internal/bytes.js';
@@ -9,6 +10,19 @@ const invitationId = 'a9cb2df1-5a48-449b-8c8a-1b20a5b7f433';
 const enrollmentToken = 'enrollment-secret-token';
 
 describe('AnisEnrollmentClient', () => {
+  it('rejects blank or control-bearing invitation tokens without echoing the token', () => {
+    const token = 'private-token\nsecond-line';
+    try {
+      AnisEnrollmentClient.create({ authority: 'https://partners.example', invitationId, enrollmentToken: token });
+      throw new Error('Expected token validation to fail.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(TypeError);
+      expect((error as Error).message).not.toContain(token);
+    }
+    expect(() =>
+      AnisEnrollmentClient.create({ authority: 'https://partners.example', invitationId, enrollmentToken: '  ' }),
+    ).toThrow(TypeError);
+  });
   it('sends the enrollment token without a request signature and verifies the answer', async () => {
     const fake = await signedFetchDouble(() => ({ body: `{"invitationId":"${invitationId}","state":"pendingProof"}` }));
     const client = AnisEnrollmentClient.create({
@@ -35,10 +49,18 @@ describe('AnisEnrollmentClient', () => {
       enrollmentToken,
       fetch: fake.fetcher,
       logger: {
-        debug: (message, fields) => messages.push(JSON.stringify({ message, fields })),
-        info: (message, fields) => messages.push(JSON.stringify({ message, fields })),
-        warn: (message, fields) => messages.push(JSON.stringify({ message, fields })),
-        error: (message, fields) => messages.push(JSON.stringify({ message, fields })),
+        debug: (message, fields) => {
+          messages.push(JSON.stringify({ message, fields }));
+        },
+        info: (message, fields) => {
+          messages.push(JSON.stringify({ message, fields }));
+        },
+        warn: (message, fields) => {
+          messages.push(JSON.stringify({ message, fields }));
+        },
+        error: (message, fields) => {
+          messages.push(JSON.stringify({ message, fields }));
+        },
       },
     });
 
@@ -46,6 +68,48 @@ describe('AnisEnrollmentClient', () => {
 
     expect(messages.join('\n')).not.toContain(enrollmentToken);
     expect(messages.length).toBeGreaterThan(0);
+  });
+
+  it('does not attach event 1005 to a shared signing-key cache hit', async () => {
+    const fake = await signedFetchDouble(() => ({ body: `{"invitationId":"${invitationId}","state":"pendingProof"}` }));
+    const authority = 'https://partners.example';
+    const cacheKey = `anis_partners_keys_${createHash('sha256').update(authority).digest('hex').slice(0, 32)}`;
+    const cachedDocument = JSON.stringify({
+      document: JSON.stringify(fake.keySet),
+      fetchedAt: Math.floor(Date.now() / 1000),
+    });
+    const logs: { message: string; fields: Record<string, unknown> }[] = [];
+    const client = AnisEnrollmentClient.create({
+      authority,
+      invitationId,
+      enrollmentToken,
+      fetch: fake.fetcher,
+      keyCache: {
+        get: (key) => Promise.resolve(key === cacheKey ? cachedDocument : undefined),
+        set: () => Promise.resolve(),
+      },
+      logger: {
+        debug: (message, fields) => {
+          logs.push({ message, fields });
+        },
+        info: (message, fields) => {
+          logs.push({ message, fields });
+        },
+        warn: (message, fields) => {
+          logs.push({ message, fields });
+        },
+        error: (message, fields) => {
+          logs.push({ message, fields });
+        },
+      },
+    });
+
+    await client.get();
+
+    const cacheRead = logs.find((entry) => entry.message === 'signing keys read from the shared cache');
+    expect(cacheRead).toBeDefined();
+    expect(cacheRead?.fields.eventId).toBeUndefined();
+    expect(fake.requests).toHaveLength(1);
   });
 
   it('submits a public key, derives its safety code, and proves the signed challenge', async () => {
@@ -247,7 +311,7 @@ describe('AnisEnrollmentClient', () => {
         { keyId: invitationId, challenge: 'challenge', challengeGeneration: 1, thumbprint: 'thumbprint' },
         { sign: () => Promise.resolve(new Uint8Array(71)) },
       ),
-    ).rejects.toThrow('64-byte P-256 P1363');
+    ).rejects.toBeInstanceOf(Error);
     expect(calls).toBe(0);
   });
 

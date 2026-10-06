@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { AnisApiError } from '../../src/errors/anis-api-error.js';
 import { AnisPartnersClient } from '../../src/client.js';
 import { Money } from '../../src/models/money.js';
 import { KeyedSigner } from '../../src/signing/keyed-signer.js';
@@ -16,6 +15,35 @@ const order = {
 };
 
 describe('order transport retries and empty answers', () => {
+  it('shows that a retrying injected fetch repeats the same signed bytes', async () => {
+    const base = await signedFetchDouble(() => ({
+      status: 201,
+      body: `{"operationId":"${id}","status":"completed"}`,
+    }));
+    const attempts: Headers[] = [];
+    const retryingFetch: typeof globalThis.fetch = async (resource, init = {}) => {
+      attempts.push(new Headers(init.headers));
+      await base.fetcher(resource, init);
+      return base.fetcher(resource, init);
+    };
+    const client = AnisPartnersClient.create({
+      options: { authority: 'https://partners.example' },
+      signer,
+      fetch: retryingFetch,
+    });
+
+    const result = await client.orders.create(id, id, order);
+
+    expect(result.kind).toBe('completed');
+    expect(base.requests).toHaveLength(2);
+    expect(new Headers(base.requests[0]?.init.headers).get('nonce')).toBe(
+      new Headers(base.requests[1]?.init.headers).get('nonce'),
+    );
+    expect(new Headers(base.requests[0]?.init.headers).get('signature')).toBe(
+      new Headers(base.requests[1]?.init.headers).get('signature'),
+    );
+  });
+
   it('uses a fresh signature and nonce when the caller retries an unknown attempt', async () => {
     const attempted: Headers[] = [];
     const client = AnisPartnersClient.create({
@@ -47,7 +75,7 @@ describe('order transport retries and empty answers', () => {
     await expect(client.orders.create(id, id, order)).rejects.toBeInstanceOf(RequestSigningError);
   });
 
-  it('returns an internal error with Empty body for a verified JSON null response', async () => {
+  it('rejects a verified JSON null response as a malformed model', async () => {
     const fake = await signedFetchDouble(() => ({ body: 'null' }));
     const client = AnisPartnersClient.create({
       options: { authority: 'https://partners.example' },
@@ -55,7 +83,6 @@ describe('order transport retries and empty answers', () => {
       fetch: fake.fetcher,
     });
 
-    await expect(client.profile.get()).rejects.toMatchObject<Partial<AnisApiError>>({ code: 'internal_error' });
-    await expect(client.profile.get()).rejects.toMatchObject({ problem: { title: 'Empty body' } });
+    await expect(client.profile.get()).rejects.toMatchObject({ name: 'MalformedResponseError', model: 'JSON object' });
   });
 });

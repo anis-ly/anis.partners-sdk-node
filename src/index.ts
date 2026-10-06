@@ -18,6 +18,10 @@ export type {
 } from './models/enrollment.js';
 
 export { AnisApiError } from './errors/anis-api-error.js';
+export { AnisPartnersError } from './errors/anis-partners-error.js';
+export { PrivateKeyError } from './errors/private-key-error.js';
+export { MalformedResponseError } from './errors/malformed-response-error.js';
+export { SigningKeyDocumentUnavailableError } from './errors/signing-key-document-unavailable-error.js';
 export {
   AuthorizationError,
   DependencyUnavailableError,
@@ -68,10 +72,19 @@ export type {
   OrderResult,
 } from './operations/order-result.js';
 
-export type { ClientOptions } from './client-options.js';
+export type { ClientOptions, ValidatedClientOptions } from './client-options.js';
 export { validateClientOptions } from './client-options.js';
 export { AnisPartnersClient } from './client.js';
 export type { AnisPartnersClientCreateOptions } from './client.js';
 export type { KeyDocumentCache } from './verification/http-signing-key-source.js';
 export type { CallOptions, PageOptions } from './operations/operations.js';
+export {
+  CatalogueOperations,
+  DiagnosticsOperations,
+  OrderOperations,
+  OwnedCardOperations,
+  ProfileOperations,
+  WalletOperations,
+} from './operations/operations.js';
 export type { PartnerLogger } from './observability/logger.js';
+export { AnisPartnersTelemetry } from './observability/telemetry-names.js';

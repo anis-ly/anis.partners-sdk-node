@@ -18,6 +18,8 @@ import type { TransportOptions } from '../operations/partner-transport.js';
 import { validateClientOptions, type ClientOptions } from '../client-options.js';
 import { HttpSigningKeySource, type KeyDocumentCache } from '../verification/http-signing-key-source.js';
 import type { PartnerLogger } from '../observability/logger.js';
+import { AnisPartnersError } from '../errors/anis-partners-error.js';
+import { safeLog } from '../internal/safe-telemetry.js';
 
 /** Settings for an enrollment invitation before an active request key exists. */
 export interface AnisEnrollmentClientOptions {
@@ -28,19 +30,19 @@ export interface AnisEnrollmentClientOptions {
   /** Secret invitation token; it is sent only in Authorization and never logged. */
   enrollmentToken: string;
   /** Injectable fetch for proxies and in-memory API doubles. */
-  fetch?: typeof globalThis.fetch;
+  fetch?: typeof globalThis.fetch | undefined;
   /** Shared key-document cache for short-lived hosts. */
-  keyCache?: KeyDocumentCache;
+  keyCache?: KeyDocumentCache | undefined;
   /** Optional structured log sink. */
-  logger?: PartnerLogger;
+  logger?: Partial<PartnerLogger> | undefined;
   /** Cache lifetime for the unsigned public response-key document. */
-  signingKeyCacheSeconds?: number;
+  signingKeyCacheSeconds?: number | undefined;
   /** Per-request timeout. */
-  timeoutMs?: number;
+  timeoutMs?: number | undefined;
 }
 
 /** Raised when the verified challenge names a different key than the one submitted. */
-export class EnrollmentKeyMismatchError extends Error {
+export class EnrollmentKeyMismatchError extends AnisPartnersError {
   /** Thumbprint calculated from the public key submitted by this caller. */
   readonly localThumbprint: string;
   /** Thumbprint returned by Anis, when present. */
@@ -50,7 +52,6 @@ export class EnrollmentKeyMismatchError extends Error {
     super(
       'The key Anis holds differs from the one submitted. Do not prove possession; ask Anis to restart enrollment.',
     );
-    this.name = 'EnrollmentKeyMismatchError';
     this.localThumbprint = localThumbprint;
     if (serverThumbprint !== undefined) this.serverThumbprint = serverThumbprint;
   }
@@ -63,21 +64,18 @@ export class AnisEnrollmentClient {
   readonly #token: string;
   private constructor(transport: PartnerTransport, invitationId: string, token: string) {
     this.transport = transport;
-    this.invitation = canonicalUuid(invitationId);
+    this.invitation = canonicalUuid(invitationId, 'invitationId');
     this.#token = token;
   }
   /** Creates an enrollment client over the same mandatory response-verification pipeline. */
   static create(input: AnisEnrollmentClientOptions): AnisEnrollmentClient {
-    if (input.enrollmentToken.length === 0) throw new TypeError('An enrollment token is required.');
+    if (input.enrollmentToken.trim().length === 0 || hasControlCharacters(input.enrollmentToken))
+      throw new TypeError('The enrollment token must be non-blank and contain no control characters.');
     const options = validateClientOptions({
       authority: input.authority,
       ...(input.signingKeyCacheSeconds === undefined ? {} : { signingKeyCacheSeconds: input.signingKeyCacheSeconds }),
       ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
     } satisfies ClientOptions);
-    const signer = {
-      keyId: '00000000-0000-4000-8000-000000000000',
-      sign: () => Promise.resolve(new Uint8Array(64)),
-    };
     const fetcher = input.fetch ?? globalThis.fetch;
     const keySource = new HttpSigningKeySource({
       authority: options.authority,
@@ -89,14 +87,19 @@ export class AnisEnrollmentClient {
         : {
             logger: {
               debug(message: string, fields: Record<string, unknown>) {
-                input.logger?.debug(message, { ...fields, eventId: 1005 });
+                safeLog(input.logger, 'debug', message, fields);
+              },
+              info(message: string, fields: Record<string, unknown>) {
+                safeLog(input.logger, 'info', message, { ...fields, eventId: 1005 });
+              },
+              warn(message: string, fields: Record<string, unknown>) {
+                safeLog(input.logger, 'warn', message, fields);
               },
             },
           }),
     });
     const transportOptions: TransportOptions = {
       ...options,
-      signer,
       fetcher,
       keySource,
       ...(input.logger === undefined ? {} : { logger: input.logger }),
@@ -104,7 +107,7 @@ export class AnisEnrollmentClient {
     return new AnisEnrollmentClient(new Transport(transportOptions), input.invitationId, input.enrollmentToken);
   }
   /** Reads invitation state. */
-  get(options?: { signal?: AbortSignal }): Promise<EnrollmentState> {
+  async get(options?: { signal?: AbortSignal }): Promise<EnrollmentState> {
     return this.transport.json(
       {
         method: 'GET',
@@ -117,7 +120,7 @@ export class AnisEnrollmentClient {
     );
   }
   /** Reads approval and key-expiry state. */
-  getStatus(options?: { signal?: AbortSignal }): Promise<EnrollmentStatus> {
+  async getStatus(options?: { signal?: AbortSignal }): Promise<EnrollmentStatus> {
     return this.transport.json(
       {
         method: 'GET',
@@ -186,13 +189,19 @@ export class AnisEnrollmentClient {
     );
   }
   /** Submits a previously prepared proof for the current challenge generation. */
-  submitProof(request: EnrollmentProofRequest, options?: { signal?: AbortSignal }): Promise<EnrollmentStatus> {
+  async submitProof(request: EnrollmentProofRequest, options?: { signal?: AbortSignal }): Promise<EnrollmentStatus> {
     return this.transport.json(
       {
         method: 'POST',
         route: '/v1/enrollments/{invitationId}/proof',
         path: `/v1/enrollments/${this.invitation}/proof`,
-        body: new TextEncoder().encode(JSON.stringify(request)),
+        body: new TextEncoder().encode(
+          JSON.stringify({
+            keyId: request.keyId,
+            challengeGeneration: request.challengeGeneration,
+            signature: request.signature,
+          }),
+        ),
         enrollmentToken: this.#token,
         ...(options?.signal === undefined ? {} : { signal: options.signal }),
       },
@@ -210,4 +219,12 @@ function rejectPrivateMembers(jwk: object): void {
 }
 function missing(member: string): never {
   throw new TypeError(`Enrollment key answer has no ${member}.`);
+}
+
+function hasControlCharacters(value: string): boolean {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (code <= 31 || code === 127) return true;
+  }
+  return false;
 }

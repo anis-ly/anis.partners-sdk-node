@@ -24,7 +24,7 @@ export class PartnerResponseVerifier {
   constructor(
     private readonly keys: SigningKeySource,
     private readonly clock: Clock = systemClock,
-    private readonly logger?: Pick<PartnerLogger, 'warn'>,
+    private readonly logger?: Partial<Pick<PartnerLogger, 'warn'>>,
   ) {}
 
   /** Resolves only for a verifiable response; every refusal throws so untrusted content cannot reach a caller. */

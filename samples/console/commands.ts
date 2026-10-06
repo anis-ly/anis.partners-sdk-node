@@ -1,5 +1,5 @@
-import { generateKeyPairSync } from 'node:crypto';
-import { chmod, mkdir, open, readFile, unlink, writeFile } from 'node:fs/promises';
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
+import { chmod, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import {
   AnisEnrollmentClient,
@@ -55,7 +55,7 @@ export async function runSampleCommand(
   args: string[],
   settings: SampleSettings,
   dependencies: SampleDependencies = {},
-): Promise<void> {
+): Promise<number | undefined> {
   const print = dependencies.stdout ?? console.log;
   if (command === 'help' || command.length === 0) {
     print(HELP);
@@ -170,8 +170,10 @@ export async function runSampleCommand(
       printJson(await client.orders.get(requireArg(walletId, 'operation id')), print);
       return;
     }
-    case 'tour':
-      return tour(client, settings, fetcher, print, showSecrets);
+    case 'tour': {
+      await tour(client, settings, fetcher, print, showSecrets);
+      return;
+    }
     default:
       throw new TypeError(`Unknown command: ${command}. Run help for the command list.`);
   }
@@ -250,10 +252,11 @@ async function placeOrder(
   args: string[],
   print: (text: string) => void,
   showSecrets: boolean,
-) {
+): Promise<number | undefined> {
   const [walletId, subcategoryId, cardId, quantityText] = args;
   const quantity = Number(requireArg(quantityText, 'quantity'));
   if (!Number.isInteger(quantity) || quantity < 1) throw new RangeError('Quantity must be a positive whole number.');
+  const operationId = canonicalOperationId(optionValue(args, '--operation') ?? randomUUID());
   const selectedCardId = requireArg(cardId, 'card id');
   const card = await findCard(
     client,
@@ -265,7 +268,6 @@ async function placeOrder(
   const priceOverride = optionValue(args, '--expected-unit-price');
   const unitPrice = priceOverride === undefined ? card.unitPrice : Money.of(priceOverride, card.unitPrice.currency);
   const reference = optionValue(args, '--reference');
-  const operationId = optionValue(args, '--operation') ?? globalThis.crypto.randomUUID();
   const order = {
     cardId: selectedCardId,
     quantity,
@@ -277,25 +279,25 @@ async function placeOrder(
   const intent = { operationId, walletId, request: order, outcome: 'sent' };
   await mkdir(settings.ordersFolder, { recursive: true });
   const intentPath = join(settings.ordersFolder, `${operationId}.json`);
-  await writeFile(intentPath, JSON.stringify(intent, null, 2), {
-    flag: 'wx',
-    mode: 0o600,
-  });
+  await createJournal(intentPath, JSON.stringify(intent, null, 2));
   print(`Saved order intent ${operationId} before sending.`);
-  const result = await client.orders.create(requireArg(walletId, 'wallet id'), operationId, order);
+  let result: Awaited<ReturnType<AnisPartnersClient['orders']['create']>>;
+  try {
+    result = await client.orders.create(requireArg(walletId, 'wallet id'), operationId, order);
+  } catch (error) {
+    if (!isDryRunStop(error)) throw error;
+    await unlink(intentPath);
+    print(dryRunMessage(error));
+    return;
+  }
   if (result.kind === 'unknown' && isDryRunStop(result.cause)) {
     await unlink(intentPath);
     print(dryRunMessage(result.cause));
     return;
   }
-  await writeFile(
-    join(settings.ordersFolder, `${operationId}.json`),
-    JSON.stringify({ ...intent, result }, dateToWire, 2),
-    {
-      mode: 0o600,
-    },
-  );
+  await updateJournal(intentPath, { ...intent, result });
   showOrderResult(result, print, showSecrets);
+  return pendingOrderExitCode(result);
 }
 
 async function resumeOrder(
@@ -304,8 +306,8 @@ async function resumeOrder(
   args: string[],
   print: (text: string) => void,
   showSecrets: boolean,
-) {
-  const operationId = requireArg(args[0], 'operation id');
+): Promise<number | undefined> {
+  const operationId = canonicalOperationId(requireArg(args[0], 'operation id'));
   const path = join(settings.ordersFolder, `${operationId}.json`);
   const intent = JSON.parse(await readFile(path, 'utf8')) as {
     operationId: string;
@@ -313,22 +315,141 @@ async function resumeOrder(
     request: {
       cardId: string;
       quantity: number;
-      expectedUnitPrice: { amount: string; currency: string };
-      expectedTotal: { amount: string; currency: string };
+      expectedUnitPrice: { amount: string; currency: string; asOf?: string };
+      expectedTotal: { amount: string; currency: string; asOf?: string };
+      externalReference?: string;
+      useAllowedDebt?: boolean;
     };
+    result?: { credentials?: readonly unknown[] };
   };
   const request = {
     ...intent.request,
-    expectedUnitPrice: Money.of(intent.request.expectedUnitPrice.amount, intent.request.expectedUnitPrice.currency),
-    expectedTotal: Money.of(intent.request.expectedTotal.amount, intent.request.expectedTotal.currency),
+    expectedUnitPrice: Money.of(
+      intent.request.expectedUnitPrice.amount,
+      intent.request.expectedUnitPrice.currency,
+      intent.request.expectedUnitPrice.asOf === undefined ? undefined : new Date(intent.request.expectedUnitPrice.asOf),
+    ),
+    expectedTotal: Money.of(
+      intent.request.expectedTotal.amount,
+      intent.request.expectedTotal.currency,
+      intent.request.expectedTotal.asOf === undefined ? undefined : new Date(intent.request.expectedTotal.asOf),
+    ),
+    ...(intent.request.externalReference === undefined ? {} : { externalReference: intent.request.externalReference }),
+    ...(intent.request.useAllowedDebt === undefined ? {} : { useAllowedDebt: intent.request.useAllowedDebt }),
   };
-  const result = await client.orders.resume(intent.walletId, operationId, request);
+  const journaledOperationId = canonicalOperationId(requireArg(intent.operationId, 'journal operation id'));
+  let result: Awaited<ReturnType<AnisPartnersClient['orders']['resume']>>;
+  try {
+    result = await client.orders.resume(intent.walletId, journaledOperationId, request);
+  } catch (error) {
+    if (!isDryRunStop(error)) throw error;
+    print(dryRunMessage(error));
+    return;
+  }
   if (result.kind === 'unknown' && isDryRunStop(result.cause)) {
     print(dryRunMessage(result.cause));
     return;
   }
-  await writeFile(path, JSON.stringify({ ...intent, result }, dateToWire, 2), { mode: 0o600 });
+  await updateJournal(path, { ...intent, result });
   showOrderResult(result, print, showSecrets);
+  return pendingOrderExitCode(result);
+}
+
+function pendingOrderExitCode(result: Awaited<ReturnType<AnisPartnersClient['orders']['create']>>): number | undefined {
+  return result.kind === 'unknown' || result.kind === 'processing' ? 4 : undefined;
+}
+
+async function createJournal(path: string, contents: string): Promise<void> {
+  const journal = await open(path, 'wx', 0o600);
+  try {
+    await journal.writeFile(contents, 'utf8');
+    await journal.sync();
+  } catch (error) {
+    await journal.close();
+    await unlink(path).catch(() => undefined);
+    throw error;
+  }
+  await journal.close();
+}
+
+const journalLocks = new Map<string, Promise<void>>();
+
+async function updateJournal(path: string, candidate: Record<string, unknown>): Promise<void> {
+  await withJournalLock(path, async () => {
+    const temporaryPath = `${path}.${randomUUID()}.tmp`;
+    try {
+      const current = await readJournal(path);
+      const merged = mergeJournal(current, candidate);
+      const temporary = await open(temporaryPath, 'wx', 0o600);
+      try {
+        await temporary.writeFile(JSON.stringify(merged, dateToWire, 2), 'utf8');
+        await temporary.sync();
+      } finally {
+        await temporary.close();
+      }
+      const latest = await readJournal(path);
+      const finalJournal = mergeJournal(latest, candidate);
+      const replacement = await open(temporaryPath, 'w', 0o600);
+      try {
+        await replacement.writeFile(JSON.stringify(finalJournal, dateToWire, 2), 'utf8');
+        await replacement.sync();
+      } finally {
+        await replacement.close();
+      }
+      await rename(temporaryPath, path);
+    } catch (error) {
+      await unlink(temporaryPath).catch(() => undefined);
+      throw error;
+    }
+  });
+}
+
+async function readJournal(path: string): Promise<Record<string, unknown>> {
+  const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+    throw new TypeError('The order journal must contain a JSON object.');
+  return parsed as Record<string, unknown>;
+}
+
+async function withJournalLock<T>(path: string, action: () => Promise<T>): Promise<T> {
+  const key = resolve(path);
+  const previous = journalLocks.get(key) ?? Promise.resolve();
+  let release: (() => void) | undefined;
+  const gate = new Promise<void>((resolveGate) => {
+    release = resolveGate;
+  });
+  const tail = previous.then(() => gate);
+  journalLocks.set(key, tail);
+  await previous;
+  try {
+    return await action();
+  } finally {
+    release?.();
+    if (journalLocks.get(key) === tail) journalLocks.delete(key);
+  }
+}
+
+function mergeJournal(current: Record<string, unknown>, candidate: Record<string, unknown>): Record<string, unknown> {
+  const currentResult = asJournalObject(current.result);
+  const candidateResult = asJournalObject(candidate.result);
+  if (candidateResult === undefined) return { ...current, ...candidate };
+  const keepCompleted =
+    currentResult?.kind === 'completed' && ['processing', 'unknown', 'replayed'].includes(String(candidateResult.kind));
+  const selectedResult = keepCompleted ? currentResult : candidateResult;
+  const existingCredentials = isUnknownArray(currentResult?.credentials) ? currentResult.credentials : [];
+  const suppliedCredentials = isUnknownArray(candidateResult.credentials) ? candidateResult.credentials : [];
+  const credentials = [...existingCredentials, ...suppliedCredentials];
+  const result = credentials.length === 0 ? selectedResult : { ...selectedResult, credentials };
+  return { ...current, ...candidate, result };
+}
+
+function asJournalObject(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
+}
+
+function isUnknownArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
 }
 
 function showOrderResult(
@@ -340,6 +461,9 @@ function showOrderResult(
   if (result.kind === 'unknown' || result.kind === 'processing') print(`Resume operation: ${result.operationId}`);
   if (result.kind === 'completed')
     print(`Credentials released: ${String(result.credentials.length)}; store them in your secret store.`);
+  if (result.kind === 'completed' && result.codesWithheld) print('Order completed; Anis withheld the credentials.');
+  if (result.kind === 'processing' && result.order.status === 'recoveryExhausted')
+    print('Recovery is exhausted; continue resuming the same operation id after several minutes.');
   if (result.kind === 'notPlaced') print(`Refusal code: ${result.refusal.code}; no order was placed.`);
   printJson(result, print, showSecrets);
 }
@@ -426,7 +550,9 @@ class DryRunStop extends Error {
 }
 
 function isDryRunStop(error: unknown): boolean {
-  return error instanceof Error && error.name === 'DryRunStop';
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'DryRunStop') return true;
+  return isDryRunStop(error.cause);
 }
 
 function dryRunMessage(error: unknown): string {
@@ -504,6 +630,12 @@ function mask(value: string): string {
 function requireArg(value: string | undefined, label: string): string {
   if (value === undefined || value.length === 0) throw new TypeError(`A ${label} is required.`);
   return value;
+}
+
+function canonicalOperationId(value: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))
+    throw new TypeError('The operation id must be a UUID.');
+  return value.toLowerCase();
 }
 
 function requireSetting(value: string, name: string): string {

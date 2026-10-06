@@ -1,4 +1,7 @@
 import { asObject, optionalTimestamp, requiredString } from './model-parsing.js';
+import { inspect } from 'node:util';
+
+const moneyBrand = Symbol.for('@anis-ly/partners.Money');
 
 /**
  * An exact currency amount stored as thousandths instead of floating-point units.
@@ -7,13 +10,22 @@ import { asObject, optionalTimestamp, requiredString } from './model-parsing.js'
  * checked against unit price multiplied by quantity. Integer thousandths keep that comparison exact.
  */
 export class Money {
+  readonly #thousandths: bigint;
+
   private constructor(
-    private readonly thousandths: bigint,
+    thousandths: bigint,
     /** ISO currency code associated with this amount. */
     readonly currency: string,
     /** Instant at which the amount was computed, when the wire provides one. */
     readonly asOf?: Date,
-  ) {}
+  ) {
+    this.#thousandths = thousandths;
+    Object.defineProperty(this, moneyBrand, { value: true });
+  }
+
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return typeof value === 'object' && value !== null && (value as Record<symbol, unknown>)[moneyBrand] === true;
+  }
 
   /**
    * Builds an amount from its decimal wire spelling.
@@ -44,8 +56,8 @@ export class Money {
 
   /** The amount rendered with exactly three decimal places so Anis receives the contract's decimal-string form. */
   get amount(): string {
-    const negative = this.thousandths < 0n;
-    const absolute = negative ? -this.thousandths : this.thousandths;
+    const negative = this.#thousandths < 0n;
+    const absolute = negative ? -this.#thousandths : this.#thousandths;
     const whole = absolute / 1000n;
     const fraction = String(absolute % 1000n).padStart(3, '0');
     return `${negative ? '-' : ''}${String(whole)}.${fraction}`;
@@ -60,7 +72,16 @@ export class Money {
     if (!Number.isSafeInteger(quantity)) {
       throw new TypeError('Money can only be multiplied by a safe whole number.');
     }
-    return new Money(this.thousandths * BigInt(quantity), this.currency);
+    return new Money(this.#thousandths * BigInt(quantity), this.currency);
+  }
+
+  /** Uses the familiar decimal and currency spelling when a balance is interpolated into application text. */
+  toString(): string {
+    return `${this.amount} ${this.currency}`;
+  }
+
+  [inspect.custom](): string {
+    return this.toString();
   }
 
   /** Converts to the contract object while retaining its decimal-string amount. */

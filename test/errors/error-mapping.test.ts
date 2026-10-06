@@ -18,6 +18,10 @@ import {
 } from '../../src/errors/anis-api-error.js';
 import type { OrderRefusalOutcome } from '../../src/errors/anis-api-error.js';
 import { ERROR_CODES } from '../../src/errors/error-codes.generated.js';
+import { AnisPartnersClient } from '../../src/client.js';
+import { Money } from '../../src/models/money.js';
+import { KeyedSigner } from '../../src/signing/keyed-signer.js';
+import { signedFetchDouble } from '../support/signed-fetch.js';
 
 type ErrorConstructor = new (
   problem: { status: number; code?: string; requestId?: string },
@@ -75,11 +79,42 @@ describe('Anis API error mapping', () => {
       409,
     );
 
-    expect(error).toBeInstanceOf(decision.error);
+    expect(error.constructor).toBe(decision.error);
     expect(error.orderOutcome).toBe(decision.outcome);
     expect(error.rawCode).toBe(code);
     expect(error.requestId).toBe('01J9');
   });
+
+  it.each(Object.entries(decisions))(
+    '%s selects its exact order outcome through the client',
+    async (code, decision) => {
+      const operationId = 'b26bf827-8484-44aa-987a-b033e4cfa401';
+      const walletId = '2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26';
+      const cardId = '8d4b1e73-9a25-4c60-8f37-6b2e9d5a1c48';
+      const fake = await signedFetchDouble(() => ({
+        status: 409,
+        body: JSON.stringify({ status: 409, code }),
+      }));
+      const client = AnisPartnersClient.create({
+        options: { authority: 'https://partners.example' },
+        signer: new KeyedSigner({ sign: () => Promise.resolve(new Uint8Array(64)) }, operationId),
+        fetch: fake.fetcher,
+      });
+
+      const result = await client.orders.create(walletId, operationId, {
+        cardId,
+        quantity: 1,
+        expectedUnitPrice: Money.of('1.000', 'LYD'),
+        expectedTotal: Money.of('1.000', 'LYD'),
+      });
+      const refusal =
+        result.kind === 'notPlaced' ? result.refusal : result.kind === 'unknown' ? result.cause : undefined;
+
+      expect(result.kind).toBe(decision.outcome);
+      expect(refusal?.constructor).toBe(decision.error);
+      expect(result.operationId).toBe(operationId);
+    },
+  );
 
   it('treats an unknown future code as an open order', () => {
     const error = createAnisApiError('{"status":409,"code":"a_code_from_the_future"}', 409);

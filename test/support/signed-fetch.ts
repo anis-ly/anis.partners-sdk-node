@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { PartnerResponseSignatureBase } from '../../src/verification/partner-response-signature-base.js';
 import type { PartnerJwk, SigningKeySet } from '../../src/verification/partner-jwk.js';
 import { arrayBufferOf } from '../../src/internal/bytes.js';
 
@@ -23,7 +22,7 @@ export async function signedFetchDouble(
     const url = new URL(typeof resource === 'string' || resource instanceof URL ? resource : resource.url);
     if (url.pathname === '/.well-known/partner-signing-keys.json')
       return new Response(JSON.stringify(keySet), { status: 200 });
-    const body = init.body instanceof Uint8Array ? new Uint8Array(init.body) : new Uint8Array();
+    const body = await bytesOfBody(init.body);
     requests.push({ url, init, body });
     const configured = answer(url, init);
     const status = configured.status ?? 200;
@@ -31,29 +30,47 @@ export async function signedFetchDouble(
     const headers = new Headers(configured.headers);
     headers.set('Content-Digest', `sha-256=:${createHash('sha256').update(responseBody).digest('base64')}:`);
     headers.set('X-Request-Id', 'req-test-001');
+    if (!headers.has('Cache-Control')) headers.set('Cache-Control', 'no-store');
     const requestSignatureInput = new Headers(init.headers).get('Signature-Input') ?? undefined;
-    const components = PartnerResponseSignatureBase.components(
-      status,
-      headers.get('Content-Digest') ?? '',
-      headers.get('X-Request-Id') ?? '',
-      requestSignatureInput,
-      headers.get('Location') ?? undefined,
-      headers.get('Retry-After') ?? undefined,
-      headers.get('Idempotency-Replayed') ?? undefined,
-      headers.get('Cache-Control') ?? undefined,
-    );
+    const components = testResponseComponents(headers, status, requestSignatureInput);
     const created = Math.floor(Date.now() / 1000);
     const params = `(${components.map((part) => `"${part.name}"${part.requestBound ? ';req' : ''}`).join(' ')});created=${String(created)};keyid="${keyId}";alg="ecdsa-p256-sha256"`;
     const signature = new Uint8Array(
       await globalThis.crypto.subtle.sign(
         { name: 'ECDSA', hash: 'SHA-256' },
         pair.privateKey,
-        arrayBufferOf(PartnerResponseSignatureBase.build(components, created, keyId)),
+        arrayBufferOf(testResponseBase(components, params)),
       ),
     );
     headers.set('Signature-Input', `sig1=${params}`);
     headers.set('Signature', `sig1=:${Buffer.from(signature).toString('base64')}:`);
     return new Response(responseBody, { status, headers });
   };
-  return { fetcher, requests };
+  return { fetcher, requests, keySet };
+}
+
+async function bytesOfBody(body: BodyInit | null | undefined): Promise<Uint8Array> {
+  if (body === null || body === undefined) return new Uint8Array();
+  return new Uint8Array(await new Response(body).arrayBuffer());
+}
+
+function testResponseComponents(headers: Headers, status: number, requestSignatureInput?: string) {
+  const components = [
+    { name: '@status', value: String(status), requestBound: false },
+    { name: 'content-digest', value: headers.get('Content-Digest') ?? '', requestBound: false },
+    { name: 'x-request-id', value: headers.get('X-Request-Id') ?? '', requestBound: false },
+  ];
+  if (requestSignatureInput !== undefined)
+    components.push({ name: 'signature-input', value: requestSignatureInput, requestBound: true });
+  for (const name of ['Location', 'Retry-After', 'Idempotency-Replayed', 'Cache-Control']) {
+    const value = headers.get(name);
+    if (value !== null) components.push({ name: name.toLowerCase(), value, requestBound: false });
+  }
+  return components;
+}
+
+function testResponseBase(components: ReturnType<typeof testResponseComponents>, params: string): Uint8Array {
+  const lines = components.map((part) => `"${part.name}"${part.requestBound ? ';req' : ''}: ${part.value}\n`);
+  lines.push(`"@signature-params": ${params}`);
+  return new TextEncoder().encode(lines.join(''));
 }

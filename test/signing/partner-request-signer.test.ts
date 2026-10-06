@@ -4,6 +4,7 @@ import { PartnerRequestSigner } from '../../src/signing/partner-request-signer.j
 import { RequestSigningError } from '../../src/signing/request-signing-error.js';
 import type { P256Signer } from '../../src/signing/p256-signer.js';
 import type { SignatureInputs } from '../../src/signing/signature-inputs.js';
+import { canonicalizeSignatureInputs } from '../../src/signing/signature-inputs.js';
 
 const readInputs: SignatureInputs = {
   method: 'GET',
@@ -16,6 +17,9 @@ const keyId = '3f2a9c14-8d6e-4b21-9f07-5c8ab2d61e43';
 const signerReturning = (signature: Uint8Array): P256Signer => ({ sign: () => Promise.resolve(signature) });
 
 describe('partner request signer', () => {
+  it('refuses a percent-escaped path before building a signature', () => {
+    expect(() => canonicalizeSignatureInputs({ ...readInputs, path: '/v1/cards/a%2Fb' })).toThrow(/percent escapes/);
+  });
   it('wraps a 71-byte signer result without exposing signed material', async () => {
     const signer = new PartnerRequestSigner(new KeyedSigner(signerReturning(new Uint8Array(71)), keyId));
     await expect(signer.sign('SafeRead', readInputs, 100, 160)).rejects.toSatisfy(
@@ -25,6 +29,12 @@ describe('partner request signer', () => {
         !error.message.includes('Signature') &&
         !error.message.includes('partners.anis.ly'),
     );
+  });
+  it('refuses signer values that are not Uint8Array instances', async () => {
+    const signer = new PartnerRequestSigner(
+      new KeyedSigner({ sign: () => Promise.resolve('A'.repeat(64) as unknown as Uint8Array) }, keyId),
+    );
+    await expect(signer.sign('SafeRead', readInputs, 100, 160)).rejects.toBeInstanceOf(RequestSigningError);
   });
   it('preserves the signer rejection as its cause', async () => {
     const cause = new Error('vault is unavailable');

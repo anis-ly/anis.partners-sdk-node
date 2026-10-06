@@ -48,4 +48,19 @@ describe('validateClientOptions', () => {
     expect(validateClientOptions({ authority: 'http://127.0.0.1:7000' }).authority.hostname).toBe('127.0.0.1');
     expect(validateClientOptions({ authority: 'http://[::1]:7000' }).authority.hostname).toBe('[::1]');
   });
+
+  it('allows uppercase localhost and refuses nearby non-loopback addresses', () => {
+    expect(validateClientOptions({ authority: 'http://LOCALHOST:7000' }).authority.hostname).toBe('localhost');
+    expect(() => validateClientOptions({ authority: 'http://127.0.0.2:7000' })).toThrow(/HTTPS/);
+  });
+
+  it.each([0, 1.5, 2_147_483_648, Number.NaN])('rejects timeoutMs value %s before creating a client', (timeoutMs) => {
+    expect(() => validateClientOptions({ authority: 'https://partners.example', timeoutMs })).toThrow(/timeoutMs/);
+  });
+
+  it('rejects a runtime language value outside Arabic and English', () => {
+    expect(() =>
+      validateClientOptions({ authority: 'https://partners.example', acceptLanguage: 'fr' as 'ar' }),
+    ).toThrow(/acceptLanguage/);
+  });
 });

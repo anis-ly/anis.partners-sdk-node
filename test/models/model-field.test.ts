@@ -100,6 +100,16 @@ describe('model field compatibility', () => {
     expect(credential.purchasedAt).toBeUndefined();
   });
 
+  it('defaults an omitted sold-card id to the nil UUID while preserving a delivered voucher', () => {
+    const credential = parseRevealedCredential({ voucher: 'delivered' });
+    expect(credential.soldCardId).toBe('00000000-0000-0000-0000-000000000000');
+    expect(credential.voucher).toBe('delivered');
+  });
+
+  it('rejects timestamps without an ISO-8601 zone', () => {
+    expect(() => parseRevealedCredential({ soldCardId, purchasedAt: '2026-09-19T08:00:00' })).toThrow(/timestamp/);
+  });
+
   it('reads masked card price, expiry, invoice, face value, and subcategory', () => {
     const card = parseMaskedCard({
       id: soldCardId,

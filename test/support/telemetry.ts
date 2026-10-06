@@ -100,6 +100,9 @@ export class InMemoryTelemetry implements TracerProvider, MeterProvider {
   readonly measurements: CapturedMeasurement[] = [];
   private readonly instruments = new Map<string, MemoryInstrument>();
   readonly scopes: string[] = [];
+  rejectWrappedSpanResult = false;
+  failSpanStart = false;
+  failMeasurements = false;
 
   /** Registers this API implementation with the global OTel proxies used by the SDK. */
   constructor() {
@@ -109,17 +112,20 @@ export class InMemoryTelemetry implements TracerProvider, MeterProvider {
 
   getTracer(name: string, version?: string, options?: TracerOptions): Tracer {
     this.scopes.push(`trace:${name}:${version ?? ''}:${options?.schemaUrl ?? ''}`);
-    return new MemoryTracer(this.spans);
+    return new MemoryTracer(this.spans, this);
   }
 
   getMeter(name: string): Meter {
     this.scopes.push(`metrics:${name}`);
-    return new MemoryMeter(this.instruments, this.measurements);
+    return new MemoryMeter(this.instruments, this.measurements, this);
   }
 }
 
 class MemoryTracer implements Tracer {
-  constructor(private readonly spans: CapturedSpan[]) {}
+  constructor(
+    private readonly spans: CapturedSpan[],
+    private readonly telemetry: InMemoryTelemetry,
+  ) {}
 
   startSpan(name: string, options?: SpanOptions, context?: Context): Span {
     const span = new CapturedSpan();
@@ -144,8 +150,12 @@ class MemoryTracer implements Tracer {
     contextOrFn?: Context | F,
     finalFn?: F,
   ): ReturnType<F> {
+    if (this.telemetry.failSpanStart) throw new Error('test tracer failure');
     const callback = typeof optionsOrFn === 'function' ? optionsOrFn : (finalFn ?? (contextOrFn as F));
-    return callback(this.startSpan(name)) as ReturnType<F>;
+    callback(this.startSpan(name));
+    if (this.telemetry.rejectWrappedSpanResult)
+      return Promise.reject(new Error('tracer wrapper failed')) as ReturnType<F>;
+    return undefined as ReturnType<F>;
   }
 }
 
@@ -153,11 +163,14 @@ class MemoryInstrument {
   constructor(
     private readonly instrument: string,
     private readonly measurements: CapturedMeasurement[],
+    private readonly telemetry: InMemoryTelemetry,
   ) {}
   add(value: number, attributes?: Attributes): void {
+    if (this.telemetry.failMeasurements) throw new Error('test meter failure');
     this.record(value, attributes);
   }
   record(value: number, attributes?: Attributes): void {
+    if (this.telemetry.failMeasurements) throw new Error('test meter failure');
     this.measurements.push({ instrument: this.instrument, value, attributes: attributes ?? {} });
   }
 }
@@ -166,6 +179,7 @@ class MemoryMeter implements Meter {
   constructor(
     private readonly instruments: Map<string, MemoryInstrument>,
     private readonly measurements: CapturedMeasurement[],
+    private readonly telemetry: InMemoryTelemetry,
   ) {}
   private readonly instrumentOptions = new Map<string, MetricOptions>();
   private readonly batchCallbacks: BatchObservableCallback[] = [];
@@ -219,7 +233,7 @@ class MemoryMeter implements Meter {
   private instrument(name: string, options?: MetricOptions): MemoryInstrument {
     const found = this.instruments.get(name);
     if (found !== undefined) return found;
-    const created = new MemoryInstrument(name, this.measurements);
+    const created = new MemoryInstrument(name, this.measurements, this.telemetry);
     this.instrumentOptions.set(name, options ?? {});
     this.instruments.set(name, created);
     return created;

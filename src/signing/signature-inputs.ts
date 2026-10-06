@@ -32,7 +32,9 @@ export function canonicalizeSignatureInputs(inputs: SignatureInputs): SignatureI
     anisDate: inputs.anisDate,
     ...(inputs.contentDigest === undefined ? {} : { contentDigest: inputs.contentDigest }),
     ...(inputs.nonce === undefined ? {} : { nonce: inputs.nonce }),
-    ...(inputs.idempotencyKey === undefined ? {} : { idempotencyKey: canonicalUuid(inputs.idempotencyKey) }),
+    ...(inputs.idempotencyKey === undefined
+      ? {}
+      : { idempotencyKey: canonicalUuid(inputs.idempotencyKey, 'idempotencyKey') }),
   };
 }
 

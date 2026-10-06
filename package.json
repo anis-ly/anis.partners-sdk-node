@@ -4,8 +4,13 @@
   "description": "The Node.js SDK for the Anis Partner API — signed requests, verified responses, typed operations.",
   "license": "MIT",
   "author": "Aniscom for Technical Services (Anis) <support@anis.ly>",
-  "homepage": "https://developers.anis.ly",
+  "homepage": "https://github.com/anis-ly/anis.partners-sdk-node#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anis-ly/anis.partners-sdk-node.git"
+  },
   "bugs": {
+    "url": "https://github.com/anis-ly/anis.partners-sdk-node/issues",
     "email": "support@anis.ly"
   },
   "keywords": [

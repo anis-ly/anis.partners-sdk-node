@@ -172,7 +172,7 @@ export function parseEnrollmentStatus(json: unknown): EnrollmentStatus {
   };
 }
 
-/** Parses diagnostic facts, defaulting arrays the same way the .NET DTO does. */
+/** Parses diagnostic facts and defaults missing collections to empty arrays for straightforward partner checks. */
 export function parseSignatureDiagnostic(json: unknown): SignatureDiagnostic {
   const object = asObject(json, 'SignatureDiagnostic');
   const routeId = optionalString(object, 'routeId', 'SignatureDiagnostic');

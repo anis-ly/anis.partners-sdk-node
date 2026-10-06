@@ -43,7 +43,7 @@ describe('request signing vectors', () => {
           : new Uint8Array(Buffer.from(vector.request.bodyBase64, 'base64'));
       const inputs: SignatureInputs = {
         method: vector.request.method,
-        authority: vector.request.authorityAsGiven.toLowerCase(),
+        authority: vector.request.authorityAsGiven,
         path: vector.request.path,
         canonicalQuery: vector.request.canonicalQuery,
         anisDate: vector.request.anisDate,

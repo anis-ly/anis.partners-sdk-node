@@ -1,11 +1,13 @@
 import { parseErrorCode, RETRYABLE_ERROR_CODES, type ErrorCode } from './error-codes.generated.js';
 import { parseProblem, type Problem } from '../models/problem.js';
+import { AnisPartnersError } from './anis-partners-error.js';
+import { retryAfterSeconds } from '../internal/retry-after.js';
 
 /** Whether Anis's refusal means the order is closed or may still complete. */
 export type OrderRefusalOutcome = 'notPlaced' | 'unknown';
 
 /** An Anis API refusal with stable machine fields for partner-side branching. */
-export class AnisApiError extends Error {
+export class AnisApiError extends AnisPartnersError {
   /** Complete parsed problem returned by Anis. */
   readonly problem: Problem;
   /** Known machine code, or unknown when this SDK has not seen the value. */
@@ -37,8 +39,8 @@ export class AnisApiError extends Error {
     super(
       `Anis returned ${String(status)} ${problem.code ?? 'unknown'}${isReplayed ? ' (recorded answer for this operation)' : ''}${problem.requestId === undefined ? '' : ` (request ${problem.requestId})`}. Branch on the code, not on this message.`,
     );
-    this.name = new.target.name;
     this.problem = problem;
+    Object.defineProperty(this, 'problem', { enumerable: false });
     this.status = status;
     this.code = parseErrorCode(problem.code);
     this.isReplayed = isReplayed;
@@ -114,7 +116,7 @@ export function refusedAtTheDoor(code: ErrorCode): boolean {
 /** Parses a verified refusal and attaches typed errors for the cases partners commonly handle differently. */
 export function createAnisApiError(body: Uint8Array | string, status: number, headers?: Headers): AnisApiError {
   const problem = parseProblemOrFallback(body, status);
-  const retryAfter = parseRetryAfter(headers?.get('retry-after') ?? undefined);
+  const retryAfter = retryAfterSeconds(headers?.get('retry-after'));
   const isReplayed = headerValues(headers?.get('idempotency-replayed')).some((value) => value.toLowerCase() === 'true');
   const ErrorType = errorTypeFor(problem.code);
   return new ErrorType(problem, status, retryAfter, isReplayed);
@@ -127,15 +129,6 @@ function parseProblemOrFallback(body: Uint8Array | string, status: number): Prob
   } catch {
     return { type: 'about:blank', title: 'Unreadable problem', status, code: 'internal_error' };
   }
-}
-
-function parseRetryAfter(value: string | undefined): number | undefined {
-  const firstValue = value?.split(',')[0]?.trim();
-  if (firstValue === undefined || !/^\d+$/.test(firstValue)) {
-    return undefined;
-  }
-  const seconds = Number(firstValue);
-  return Number.isSafeInteger(seconds) ? seconds : undefined;
 }
 
 function headerValues(value: string | null | undefined): string[] {

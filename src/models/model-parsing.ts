@@ -35,13 +35,13 @@ export function optionalString(object: JsonObject, field: string, label: string)
 /** Reads a required canonical UUID field. */
 export function requiredUuid(object: JsonObject, field: string, label: string): string {
   const { canonicalUuid } = uuidModule;
-  return canonicalUuid(requiredString(object, field, label));
+  return canonicalUuid(requiredString(object, field, label), `${label}.${field}`);
 }
 
 /** Reads an optional UUID field. */
 export function optionalUuid(object: JsonObject, field: string, label: string): string | undefined {
   const value = optionalString(object, field, label);
-  return value === undefined ? undefined : uuidModule.canonicalUuid(value);
+  return value === undefined ? undefined : uuidModule.canonicalUuid(value, `${label}.${field}`);
 }
 
 /** Reads an optional timestamp as a valid Date. */
@@ -51,10 +51,23 @@ export function optionalTimestamp(object: JsonObject, field: string, label: stri
     return undefined;
   }
   const result = new Date(value);
-  if (Number.isNaN(result.getTime())) {
+  if (!isStrictIsoTimestamp(value) || Number.isNaN(result.getTime())) {
     throw new TypeError(`${label}.${field} must be a valid timestamp.`);
   }
   return result;
+}
+
+function isStrictIsoTimestamp(value: string): boolean {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(
+      value,
+    );
+  if (match === null) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth;
 }
 
 /** Reads an optional integer field. */

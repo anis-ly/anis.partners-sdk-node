@@ -3,7 +3,7 @@ import { fixedTimeEqual } from '../internal/bytes.js';
 
 const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
-/** @internal Converts a local thumbprint into the code read to Anis staff. */
+/** Converts a locally checked thumbprint into the code read to Anis staff. */
 export function safetyCodeFromThumbprint(thumbprint: string): string {
   const bytes = decodeBase64Url(thumbprint);
   if (bytes?.length !== 32) throw new TypeError('A thumbprint must encode 32 bytes.');

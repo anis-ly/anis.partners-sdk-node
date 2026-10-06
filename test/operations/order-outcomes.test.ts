@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AnisPartnersClient } from '../../src/client.js';
 import { InsufficientBalanceError, RateLimitedError } from '../../src/errors/anis-api-error.js';
+import { MalformedResponseError } from '../../src/errors/malformed-response-error.js';
 import { Money } from '../../src/models/money.js';
 import { KeyedSigner } from '../../src/signing/keyed-signer.js';
 import { signedFetchDouble } from '../support/signed-fetch.js';
@@ -20,6 +21,50 @@ const clientFor = (fetcher: typeof globalThis.fetch) =>
   AnisPartnersClient.create({ options: { authority: 'https://partners.example' }, signer, fetch: fetcher });
 
 describe('order outcomes', () => {
+  it.each([
+    ['invalid_credentials', 401],
+    ['signature_expired', 401],
+    ['insufficient_scope', 403],
+    ['wallet_not_granted', 403],
+    ['malformed_signed_request', 400],
+  ])('keeps %s open for a minute on both create and resume', async (code, status) => {
+    const fake = await signedFetchDouble(() => ({
+      status,
+      body: JSON.stringify({ status, code }),
+    }));
+    const client = clientFor(fake.fetcher);
+
+    const created = await client.orders.create(walletId, operationId, order);
+    const resumed = await client.orders.resume(walletId, operationId, order);
+
+    expect(created).toMatchObject({ kind: 'unknown', operationId, suggestedDelayMs: 60000 });
+    expect(resumed).toMatchObject({ kind: 'unknown', operationId, suggestedDelayMs: 60000 });
+  });
+
+  it('honors a zero Retry-After value on an unresolved refusal', async () => {
+    const fake = await signedFetchDouble(() => ({
+      status: 429,
+      headers: { 'Retry-After': '0' },
+      body: '{"status":429,"code":"rate_limited"}',
+    }));
+
+    const result = await clientFor(fake.fetcher).orders.create(walletId, operationId, order);
+
+    expect(result).toMatchObject({ kind: 'unknown', suggestedDelayMs: 0 });
+  });
+
+  it('returns the maximum Retry-After value in milliseconds', async () => {
+    const fake = await signedFetchDouble(() => ({
+      status: 429,
+      headers: { 'Retry-After': '2147483647' },
+      body: '{"status":429,"code":"rate_limited"}',
+    }));
+
+    const result = await clientFor(fake.fetcher).orders.create(walletId, operationId, order);
+
+    expect(result).toMatchObject({ kind: 'unknown', suggestedDelayMs: 2_147_483_647_000 });
+  });
+
   it('returns a completed result with credentials from a successful answer', async () => {
     const fake = await signedFetchDouble(() => ({
       status: 201,
@@ -49,6 +94,47 @@ describe('order outcomes', () => {
     const result = await client.orders.create(walletId, operationId, order);
 
     expect(result).toMatchObject({ kind: 'completed', credentials: [{ voucher: 'delivered-code' }] });
+  });
+
+  it('returns delivered credentials when every asynchronous host logger call rejects', async () => {
+    const fake = await signedFetchDouble(() => ({
+      status: 201,
+      body: `{"operationId":"${operationId}","status":"completed","soldCards":[{"soldCardId":"${soldCardId}","voucher":"delivered-code"}]}`,
+    }));
+    const reject = () => Promise.reject(new Error('logger unavailable'));
+    const client = AnisPartnersClient.create({
+      options: { authority: 'https://partners.example' },
+      signer,
+      fetch: fake.fetcher,
+      logger: { debug: reject, info: reject, warn: reject, error: reject },
+    });
+
+    await expect(client.orders.create(walletId, operationId, order)).resolves.toMatchObject({
+      kind: 'completed',
+      credentials: [{ voucher: 'delivered-code' }],
+    });
+  });
+
+  it('keeps an order completion when the shared signing-key cache throws', async () => {
+    const fake = await signedFetchDouble(() => ({
+      status: 201,
+      body: `{"operationId":"${operationId}","status":"completed","soldCards":[{"soldCardId":"${soldCardId}","voucher":"delivered-code"}]}`,
+    }));
+    const keyCache = {
+      get: () => Promise.reject(new Error('cache unavailable')),
+      set: () => Promise.reject(new Error('cache unavailable')),
+    };
+    const client = AnisPartnersClient.create({
+      options: { authority: 'https://partners.example' },
+      signer,
+      fetch: fake.fetcher,
+      keyCache,
+    });
+
+    await expect(client.orders.create(walletId, operationId, order)).resolves.toMatchObject({
+      kind: 'completed',
+      credentials: [{ voucher: 'delivered-code' }],
+    });
   });
 
   it('classifies repeated true replay headers on a successful answer', async () => {
@@ -101,6 +187,33 @@ describe('order outcomes', () => {
     const result = await clientFor(fake.fetcher).orders.create(walletId, operationId, order);
 
     expect(result).toMatchObject({ kind: 'completed', credentials: [], codesWithheld: true });
+  });
+
+  it('treats explicit false as withheld when no credentials were delivered', async () => {
+    const fake = await signedFetchDouble(() => ({
+      status: 201,
+      body: `{"operationId":"${operationId}","status":"completed","codesWithheld":false,"soldCards":[]}`,
+    }));
+    const result = await clientFor(fake.fetcher).orders.create(walletId, operationId, order);
+    expect(result).toMatchObject({ kind: 'completed', credentials: [], codesWithheld: true });
+  });
+
+  it('serializes only known order request members', async () => {
+    const fake = await signedFetchDouble((url, init) => {
+      if (!url.pathname.endsWith('/orders')) return { body: '{}' };
+      if (!(init.body instanceof Uint8Array)) throw new TypeError('Expected order request bytes.');
+      const sent = JSON.parse(new TextDecoder().decode(init.body)) as Record<string, unknown>;
+      expect(Object.keys(sent).sort()).toEqual([
+        'cardId',
+        'expectedTotal',
+        'expectedUnitPrice',
+        'quantity',
+        'useAllowedDebt',
+      ]);
+      return { status: 201, body: `{"operationId":"${operationId}","status":"completed"}` };
+    });
+    const orderWithPrivateExtension = { ...order, privateVoucher: 'must-not-send' };
+    await clientFor(fake.fetcher).orders.create(walletId, operationId, orderWithPrivateExtension);
   });
 
   it('returns replayed without credentials when Anis marks an answer as already delivered', async () => {
@@ -295,7 +408,8 @@ describe('order outcomes', () => {
     expect(result.kind).toBe('unknown');
     if (result.kind !== 'unknown') throw new TypeError('Expected an unresolved order.');
     expect(result.suggestedDelayMs).toBe(5000);
-    expect(result.cause).toBeInstanceOf(SyntaxError);
+    expect(result.cause).toBeInstanceOf(MalformedResponseError);
+    expect((result.cause as Error).message).not.toContain('{');
   });
 
   it('keeps a verified successful order with an empty body unresolved', async () => {

@@ -1,11 +1,11 @@
 /** Structured partner logger; fields contain stable identifiers and never request secrets. */
 export interface PartnerLogger {
   /** Emits a diagnostic event. */
-  debug(message: string, fields: Record<string, unknown>): void;
+  debug(message: string, fields: Record<string, unknown>): void | Promise<void>;
   /** Emits an informational event. */
-  info(message: string, fields: Record<string, unknown>): void;
+  info(message: string, fields: Record<string, unknown>): void | Promise<void>;
   /** Emits a refusal or retry guidance event. */
-  warn(message: string, fields: Record<string, unknown>): void;
+  warn(message: string, fields: Record<string, unknown>): void | Promise<void>;
   /** Emits a discarded-response or communication error. */
-  error(message: string, fields: Record<string, unknown>): void;
+  error(message: string, fields: Record<string, unknown>): void | Promise<void>;
 }

@@ -1,7 +1,11 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { AnisPartnersClient } from '../../src/client.js';
+import { PemP256Signer } from '../../src/signing/pem-p256-signer.js';
 import { KeyedSigner } from '../../src/signing/keyed-signer.js';
 import { Money } from '../../src/models/money.js';
 import type { PartnerLogger } from '../../src/observability/logger.js';
+import type { RequestSigner } from '../../src/signing/p256-signer.js';
 import { signedFetchDouble } from '../support/signed-fetch.js';
 import { InMemoryTelemetry } from '../support/telemetry.js';
 
@@ -9,10 +13,14 @@ const uuid = '2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26';
 const signer = new KeyedSigner({ sign: () => Promise.resolve(new Uint8Array(64)) }, uuid);
 const telemetry = new InMemoryTelemetry();
 const clientModule = import('../../src/client.js');
-const create = async (fetch: typeof globalThis.fetch, logger?: PartnerLogger) =>
+const create = async (
+  fetch: typeof globalThis.fetch,
+  logger?: Partial<PartnerLogger>,
+  requestSigner: RequestSigner = signer,
+) =>
   (await clientModule).AnisPartnersClient.create({
     options: { authority: 'https://partners.example' },
-    signer,
+    signer: requestSigner,
     fetch,
     ...(logger === undefined ? {} : { logger }),
   });
@@ -94,6 +102,28 @@ describe('signed request pipeline rules', () => {
     );
   });
 
+  it('counts a content-encoded response as a digest verification failure', async () => {
+    const before = telemetry.measurements.length;
+    const fake = await signedFetchDouble(() => ({ body: `{"id":"${uuid}"}` }));
+    const encoded: typeof globalThis.fetch = async (resource, init) => {
+      const response = await fake.fetcher(resource, init);
+      const headers = new Headers(response.headers);
+      headers.set('content-encoding', 'gzip');
+      return new Response(await response.arrayBuffer(), { status: response.status, headers });
+    };
+
+    await expect((await create(encoded)).profile.get()).rejects.toMatchObject({
+      failure: 'content_digest_mismatch',
+    });
+
+    expect(telemetry.measurements.slice(before)).toContainEqual(
+      expect.objectContaining({
+        instrument: 'anis.partners.response.verification.failures',
+        attributes: { 'anis.verification.failure': 'content_digest_mismatch' },
+      }),
+    );
+  });
+
   it('logs a verified refusal with its public code and request id', async () => {
     const logs: { message: string; fields: Record<string, unknown> }[] = [];
     const fake = await signedFetchDouble(() => ({
@@ -101,10 +131,18 @@ describe('signed request pipeline rules', () => {
       body: '{"status":409,"code":"insufficient_balance","requestId":"req-test-001"}',
     }));
     const logger = {
-      debug: (message: string, fields: Record<string, unknown>) => logs.push({ message, fields }),
-      info: (message: string, fields: Record<string, unknown>) => logs.push({ message, fields }),
-      warn: (message: string, fields: Record<string, unknown>) => logs.push({ message, fields }),
-      error: (message: string, fields: Record<string, unknown>) => logs.push({ message, fields }),
+      debug: (message: string, fields: Record<string, unknown>) => {
+        logs.push({ message, fields });
+      },
+      info: (message: string, fields: Record<string, unknown>) => {
+        logs.push({ message, fields });
+      },
+      warn: (message: string, fields: Record<string, unknown>) => {
+        logs.push({ message, fields });
+      },
+      error: (message: string, fields: Record<string, unknown>) => {
+        logs.push({ message, fields });
+      },
     };
 
     await expect((await create(fake.fetcher, logger)).wallets.get(uuid)).rejects.toMatchObject({
@@ -112,10 +150,66 @@ describe('signed request pipeline rules', () => {
       requestId: 'req-test-001',
     });
 
-    const refusal = logs.find((entry) => entry.message === 'Anis refused the request');
+    const refusal = logs.find((entry) => entry.fields.eventId === 1002);
+    const completed = logs.find((entry) => entry.fields.eventId === 1001);
+    expect(completed?.message).toContain('requestId=req-test-001');
+    expect(completed?.message).toContain(`elapsedMs=${String(completed?.fields.elapsedMs)}`);
     expect(refusal?.fields.eventId).toBe(1002);
     expect(refusal?.fields.code).toBe('insufficient_balance');
     expect(refusal?.fields.requestId).toBe('req-test-001');
+    expect(refusal?.message).toContain('requestId=req-test-001');
+    expect(refusal?.message).toContain(`retryable=${String(refusal?.fields.retryable)}`);
+    expect(refusal?.message).toContain(`replayed=${String(refusal?.fields.replayed)}`);
+  });
+
+  it('does not label a shared signing-key cache hit as event 1005', async () => {
+    const fake = await signedFetchDouble(() => ({ body: `{"id":"${uuid}"}` }));
+    const authority = 'https://partners.example';
+    const cacheKey = `anis_partners_keys_${createHash('sha256').update(authority).digest('hex').slice(0, 32)}`;
+    const envelope = JSON.stringify({
+      fetchedAt: Math.floor(Date.now() / 1000),
+      document: JSON.stringify(fake.keySet),
+    });
+    const keyCache = {
+      get: (key: string) => Promise.resolve(key === cacheKey ? envelope : undefined),
+      set: () => Promise.resolve(),
+    };
+    const logs: { message: string; fields: Record<string, unknown> }[] = [];
+    const logger: PartnerLogger = {
+      debug: (message, fields) => {
+        logs.push({ message, fields });
+      },
+      info: (message, fields) => {
+        logs.push({ message, fields });
+      },
+      warn: (message, fields) => {
+        logs.push({ message, fields });
+      },
+      error: (message, fields) => {
+        logs.push({ message, fields });
+      },
+    };
+    const before = telemetry.measurements.length;
+    const client = AnisPartnersClient.create({
+      options: { authority },
+      signer,
+      fetch: fake.fetcher,
+      keyCache,
+      logger,
+    });
+
+    await client.profile.get();
+
+    const cacheRead = logs.find((entry) => entry.message === 'signing keys read from the shared cache');
+    expect(cacheRead).toBeDefined();
+    expect(cacheRead?.fields.eventId).toBeUndefined();
+    expect(fake.requests).toHaveLength(1);
+    expect(fake.requests[0]?.url.pathname).toBe('/v1/profile');
+    expect(
+      telemetry.measurements
+        .slice(before)
+        .some((measurement) => measurement.instrument === 'anis.partners.signing_keys.fetches'),
+    ).toBe(false);
   });
 
   it('tags client spans with the route template and request outcome', async () => {
@@ -221,6 +315,7 @@ describe('signed request pipeline rules', () => {
       .find((measurement) => measurement.instrument === 'anis.partners.request.duration');
     expect(duration?.attributes['error.type']).toBe('timeout');
     expect(telemetry.spans.at(-1)?.status.code).toBe(2);
+    expect(telemetry.spans.at(-1)?.attributes['error.type']).toBe('timeout');
   });
 
   it('counts an unverifiable successful order answer as unknown', async () => {
@@ -251,6 +346,30 @@ describe('signed request pipeline rules', () => {
     expect(outcome?.attributes['error.type']).toBe('unverifiable');
   });
 
+  it('reports a signing-key fetch failure as a connection error, not a verification failure', async () => {
+    const before = telemetry.measurements.length;
+    const signed = await signedFetchDouble(() => ({ body: `{"id":"${uuid}"}` }));
+    const fetcher: typeof globalThis.fetch = async (resource, init) => {
+      const url = new URL(typeof resource === 'string' || resource instanceof URL ? resource : resource.url);
+      if (url.pathname === '/.well-known/partner-signing-keys.json') throw new TypeError('key service unavailable');
+      return signed.fetcher(resource, init);
+    };
+
+    await expect((await create(fetcher)).profile.get()).rejects.toMatchObject({
+      name: 'SigningKeyDocumentUnavailableError',
+    });
+
+    const measurements = telemetry.measurements.slice(before);
+    expect(
+      measurements.some((measurement) => measurement.instrument === 'anis.partners.response.verification.failures'),
+    ).toBe(false);
+    expect(
+      measurements.find((measurement) => measurement.instrument === 'anis.partners.request.duration')?.attributes[
+        'error.type'
+      ],
+    ).toBe('connection');
+  });
+
   it('counts an empty successful order answer as an unknown outcome', async () => {
     const before = telemetry.measurements.length;
     const fake = await signedFetchDouble(() => ({ status: 201, body: 'null' }));
@@ -272,12 +391,20 @@ describe('signed request pipeline rules', () => {
 
   it('logs access refusals as unresolved orders with their public code', async () => {
     const before = telemetry.measurements.length;
-    const logs: string[] = [];
+    const logs: { level: string; fields: Record<string, unknown> }[] = [];
     const logger = {
-      debug: (message: string, fields: Record<string, unknown>) => logs.push(JSON.stringify({ message, fields })),
-      info: (message: string, fields: Record<string, unknown>) => logs.push(JSON.stringify({ message, fields })),
-      warn: (message: string, fields: Record<string, unknown>) => logs.push(JSON.stringify({ message, fields })),
-      error: (message: string, fields: Record<string, unknown>) => logs.push(JSON.stringify({ message, fields })),
+      debug: (_message: string, fields: Record<string, unknown>) => {
+        logs.push({ level: 'debug', fields });
+      },
+      info: (_message: string, fields: Record<string, unknown>) => {
+        logs.push({ level: 'info', fields });
+      },
+      warn: (_message: string, fields: Record<string, unknown>) => {
+        logs.push({ level: 'warn', fields });
+      },
+      error: (_message: string, fields: Record<string, unknown>) => {
+        logs.push({ level: 'error', fields });
+      },
     };
     const fake = await signedFetchDouble(() => ({ status: 401, body: '{"status":401,"code":"invalid_credentials"}' }));
     const client = await create(fake.fetcher, logger);
@@ -290,11 +417,15 @@ describe('signed request pipeline rules', () => {
     });
 
     expect(result).toMatchObject({ kind: 'unknown', suggestedDelayMs: 60000 });
-    expect(logs.some((line) => line.includes('1008') && line.includes('invalid_credentials'))).toBe(true);
+    expect(logs.some((entry) => entry.level === 'warn' && entry.fields.eventId === 1008)).toBe(true);
+    expect(logs.find((entry) => entry.fields.eventId === 1008)?.fields.operationId).toBe(
+      'b26bf827-8484-44aa-987a-b033e4cfa401',
+    );
     const outcome = telemetry.measurements
       .slice(before)
       .find((measurement) => measurement.instrument === 'anis.partners.order.outcomes');
     expect(outcome?.attributes['error.type']).toBe('invalid_credentials');
+    expect(outcome?.attributes).not.toHaveProperty('anis.operation_id');
   });
 
   it('counts unresolved refusals while excluding final order refusals', async () => {
@@ -379,22 +510,45 @@ describe('signed request pipeline rules', () => {
   });
 
   it('keeps credentials and signing material out of telemetry signals', async () => {
+    const privateKeyBody =
+      'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgyIpGK3RErH7j8NIijtNQ18k1tgiJBfxXcJ/qX+dZdzahRANCAASZ08XDV443a7dWnaQlMgX8dHIShU8Ta3IMgBcb2/O4nNvjoDQD0pcOP5uDAIq72HMqwK/+X0kbY4X8J7QRc7xK';
+    const privatePem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBody}\n-----END PRIVATE KEY-----\n`;
+    const pemSigner = (await PemP256Signer.fromPem(privatePem)).forKey(uuid);
+    const spanStart = telemetry.spans.length;
+    const measurementStart = telemetry.measurements.length;
     const logs: string[] = [];
     const logger = {
-      debug: (message: string, fields: Record<string, unknown>) =>
-        logs.push(JSON.stringify({ level: 'debug', message, fields })),
-      info: (message: string, fields: Record<string, unknown>) =>
-        logs.push(JSON.stringify({ level: 'info', message, fields })),
-      warn: (message: string, fields: Record<string, unknown>) =>
-        logs.push(JSON.stringify({ level: 'warn', message, fields })),
-      error: (message: string, fields: Record<string, unknown>) =>
-        logs.push(JSON.stringify({ level: 'error', message, fields })),
+      debug: (message: string, fields: Record<string, unknown>) => {
+        logs.push(JSON.stringify({ level: 'debug', message, fields }));
+      },
+      info: (message: string, fields: Record<string, unknown>) => {
+        logs.push(JSON.stringify({ level: 'info', message, fields }));
+      },
+      warn: (message: string, fields: Record<string, unknown>) => {
+        logs.push(JSON.stringify({ level: 'warn', message, fields }));
+      },
+      error: (message: string, fields: Record<string, unknown>) => {
+        logs.push(JSON.stringify({ level: 'error', message, fields }));
+      },
     };
     const fake = await signedFetchDouble(() => ({
       body: `{"soldCardId":"${uuid}","voucher":"voucher-secret","serialNumber":"serial-secret"}`,
     }));
 
-    await (await create(fake.fetcher, logger)).ownedCards.reveal(uuid, uuid);
+    await (await create(fake.fetcher, logger, pemSigner)).ownedCards.reveal(uuid, uuid);
+
+    const orderFake = await signedFetchDouble(() => ({
+      status: 201,
+      body: `{"operationId":"b26bf827-8484-44aa-987a-b033e4cfa401","status":"completed","soldCards":[{"soldCardId":"${uuid}","voucher":"voucher-secret","serialNumber":"serial-secret"}]}`,
+    }));
+    await (
+      await create(orderFake.fetcher, logger, pemSigner)
+    ).orders.create(uuid, 'b26bf827-8484-44aa-987a-b033e4cfa401', {
+      cardId: uuid,
+      quantity: 1,
+      expectedUnitPrice: Money.of('1.000', 'LYD'),
+      expectedTotal: Money.of('1.000', 'LYD'),
+    });
 
     const enrollmentFake = await signedFetchDouble(() => ({ body: '{"state":"pendingProof"}' }));
     const enrollment = (await import('../../src/enrollment/enrollment-client.js')).AnisEnrollmentClient.create({
@@ -420,7 +574,11 @@ describe('signed request pipeline rules', () => {
     ])
       expect(emitted).not.toContain(secret);
 
-    const allSignals = JSON.stringify({ spans: telemetry.spans, measurements: telemetry.measurements, logs });
+    const allSignals = JSON.stringify({
+      spans: telemetry.spans.slice(spanStart),
+      measurements: telemetry.measurements.slice(measurementStart),
+      logs,
+    });
     expect(telemetry.spans.length).toBeGreaterThan(0);
     expect(telemetry.measurements.length).toBeGreaterThan(0);
     for (const secret of [
@@ -431,6 +589,7 @@ describe('signed request pipeline rules', () => {
       headers.get('Nonce') ?? '',
       '@signature-params',
       'enrollment-secret',
+      privateKeyBody,
     ])
       expect(allSignals).not.toContain(secret);
     const fetchMetric = telemetry.measurements

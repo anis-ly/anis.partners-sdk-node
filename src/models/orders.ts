@@ -34,9 +34,9 @@ export interface CreateOrderRequest {
   /** Exact expected unit price multiplied by quantity. */
   expectedTotal: Money;
   /** Partner's own reference, when useful for reconciliation. */
-  externalReference?: string;
+  externalReference?: string | undefined;
   /** Explicit consent to use an allowed owner debt balance. */
-  useAllowedDebt?: boolean;
+  useAllowedDebt?: boolean | undefined;
 }
 
 /**

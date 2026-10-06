@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { PemP256Signer } from '../../src/signing/pem-p256-signer.js';
+import { PrivateKeyError } from '../../src/errors/private-key-error.js';
 import { arrayBufferOf } from '../../src/internal/bytes.js';
 
 describe('PEM P-256 signer', () => {
@@ -31,9 +32,9 @@ describe('PEM P-256 signer', () => {
   });
   it('refuses P-384 keys at load time', async () => {
     const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'secp384r1' });
-    await expect(PemP256Signer.fromPem(privateKey.export({ type: 'pkcs8', format: 'pem' }).toString())).rejects.toThrow(
-      /P-256/,
-    );
+    await expect(
+      PemP256Signer.fromPem(privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()),
+    ).rejects.toBeInstanceOf(PrivateKeyError);
   });
   it('exports 32-byte public coordinates', async () => {
     const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
@@ -42,5 +43,26 @@ describe('PEM P-256 signer', () => {
     ).publicJwk();
     expect(Buffer.from(jwk.x ?? '', 'base64url')).toHaveLength(32);
     expect(Buffer.from(jwk.y ?? '', 'base64url')).toHaveLength(32);
+  });
+  it('accepts a leading BOM and surrounding PEM whitespace', async () => {
+    const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+    const signer = await PemP256Signer.fromPem(`\uFEFF\n  ${pem}\n  `);
+    await expect(signer.sign(new TextEncoder().encode('valid PEM'))).resolves.toHaveLength(64);
+  });
+
+  it('explains that SEC1 keys must be converted to PKCS#8', async () => {
+    const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const sec1 = privateKey.export({ type: 'sec1', format: 'pem' }).toString();
+    const error: unknown = await PemP256Signer.fromPem(sec1).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(PrivateKeyError);
+    if (error instanceof Error) expect(error.message).toContain('convert to PKCS#8');
+  });
+
+  it('returns the SDK error type when the PEM file cannot be read', async () => {
+    await expect(PemP256Signer.fromPemFile('/no/such/anis-private-key.pem')).rejects.toBeInstanceOf(PrivateKeyError);
   });
 });

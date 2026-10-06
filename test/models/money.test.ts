@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { inspect } from 'node:util';
 import { Money, parseMoney } from '../../src/models/money.js';
 
 describe('Money', () => {
@@ -24,6 +25,13 @@ describe('Money', () => {
 
   it('multiplies exactly using integer thousandths', () => {
     expect(Money.of('10.125', 'LYD').multiply(3).amount).toBe('30.375');
+  });
+
+  it('renders a decimal balance with its currency in application text', () => {
+    const amount = Money.of('10.500', 'LYD');
+
+    expect(String(amount)).toBe('10.500 LYD');
+    expect(inspect(amount)).toBe('10.500 LYD');
   });
 
   it('refuses an amount with more than three decimal places', () => {

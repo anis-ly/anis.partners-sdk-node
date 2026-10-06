@@ -10,6 +10,28 @@ const clientFor = (fetch: typeof globalThis.fetch) =>
   AnisPartnersClient.create({ options: { authority: 'https://partners.example' }, signer, fetch });
 
 describe('cursor paging', () => {
+  it('walks two nonempty wallet pages using the signed continuation query', async () => {
+    let page = 0;
+    const fake = await signedFetchDouble(() => {
+      page += 1;
+      const id = page === 1 ? '11111111-1111-4111-8111-111111111111' : '22222222-2222-4222-8222-222222222222';
+      return {
+        body: JSON.stringify({
+          items: [{ id, balance: { amount: '1.000', currency: 'LYD' } }],
+          ...(page === 1 ? { nextCursor: 'next-page' } : {}),
+        }),
+      };
+    });
+
+    const wallets: string[] = [];
+    for await (const item of clientFor(fake.fetcher).wallets.list()) wallets.push(item.id);
+
+    expect(wallets).toEqual(['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222']);
+    expect(fake.requests[0]?.url.search).toBe('');
+    expect(fake.requests[1]?.url.search).toBe('?cursor=next-page');
+    expect(new Headers(fake.requests[1]?.init.headers).get('signature-input')).toContain('"@query"');
+  });
+
   it('accepts the cursor and signal in one page options object', async () => {
     const fake = await signedFetchDouble(() => ({ body: '{"items":[]}' }));
     const controller = new AbortController();
@@ -19,6 +41,23 @@ describe('cursor paging', () => {
     expect(fake.requests[0]?.url.search).toBe('?cursor=next');
     expect(fake.requests[0]?.init.signal).toBeInstanceOf(AbortSignal);
     expect(fake.requests[0]?.init.signal?.aborted).toBe(false);
+  });
+
+  it('stops when Anis returns the same continuation cursor twice', async () => {
+    const fake = await signedFetchDouble(() => ({
+      body: JSON.stringify({
+        items: [{ id: wallet, balance: { amount: '1.000', currency: 'LYD' } }],
+        nextCursor: 'repeat',
+      }),
+    }));
+    const items: string[] = [];
+
+    await expect(async () => {
+      for await (const item of clientFor(fake.fetcher).wallets.list()) items.push(item.id);
+    }).rejects.toMatchObject({ name: 'MalformedResponseError' });
+
+    expect(items).toEqual([wallet, wallet]);
+    expect(fake.requests).toHaveLength(2);
   });
 
   it('walks owned card pages', async () => {

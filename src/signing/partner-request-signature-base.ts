@@ -46,7 +46,7 @@ export const PartnerRequestSignatureBase = {
     const ids = componentsOf(profile)
       .map((part) => `"${part}"`)
       .join(' ');
-    return `(${ids});created=${String(created)};expires=${String(expires)};keyid="${canonicalUuid(keyId)}";alg="${PartnerRequestSignatureBase.algorithm}"${nonce === undefined ? '' : `;nonce="${nonce}"`}`;
+    return `(${ids});created=${String(created)};expires=${String(expires)};keyid="${canonicalUuid(keyId, 'keyId')}";alg="${PartnerRequestSignatureBase.algorithm}"${nonce === undefined ? '' : `;nonce="${nonce}"`}`;
   },
 
   /** Renders the sole supported label with the same parameters used to build the signed bytes. */

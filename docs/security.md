@@ -36,7 +36,9 @@ The SDK verifies the signed response and its body digest before parsing any answ
 
 ## Enrollment and rotation
 
-Submit only a public JWK. Protect the private key before submission. After proving possession, give the safety code to Anis staff over the phone so they can confirm the key. Check `EnrollmentStatus.keyExpiresAt` and request a replacement well before expiry. During rotation, publish the new key while the previous key remains valid so clients can accept responses signed during the change.
+Submit only a public JWK. Protect the private key before submission. After proving possession, check that the proof state is `accepted`, then give the safety code to Anis staff over the phone so they can confirm the key. Check `EnrollmentStatus.keyExpiresAt` and request a replacement well before expiry. For partner request-key rotation, Anis staff start the process and the partner enrolls a replacement key; both request keys are accepted during the overlap, while a revoked key is refused as `invalid_credentials`. Separately, Anis publishes its response-signing keys in the signing-key document. When a signed response names an unknown response-key id, the SDK refreshes that document once before rejecting the response. These key rotations serve different directions: never select either key with an environment switch; follow the issued key id and Anis's rotation process.
+
+Read the safety code from your own enrollment software and repeat it to Anis staff over the phone; do not accept a code sent to you by email or chat. An expired key cannot authenticate requests; enrol a replacement before `keyExpiresAt` and contact support@anis.ly if the key has expired. The SDK checks the response body digest before checking its signature so altered content is reported as a digest mismatch before any parsed answer can be used.
 
 ## Logs and clocks
 

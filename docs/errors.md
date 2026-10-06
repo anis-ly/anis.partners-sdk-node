@@ -2,7 +2,7 @@
 
 ## Branch on the code
 
-For a read, catch `AnisApiError` and use `code`, `status`, `requestId`, `retryAfter`, `isRetryable`, and `isReplayed`. The message, title, and detail are presentation text; they may change with language or copy updates.
+For a read, catch `AnisApiError` and use `code`, `status`, `requestId`, `retryAfter`, `isRetryable`, `isReplayed`, `orderOutcome`, and `rawCode`. The message, title, and detail are presentation text; they may change with language or copy updates.
 
 ```ts
 import { AnisApiError, AnisPartnersClient, PemP256Signer } from '@anis-ly/partners';
@@ -79,3 +79,5 @@ This table is generated from `contracts/error-catalogue.json`. â€œOrder placed?â
 The typed subclasses group errors that partners commonly handle differently: `InsufficientBalanceError`, `PriceChangedError`, `OutOfStockError`, `LimitExceededError`, `RateLimitedError`, `IdempotencyConflictError`, `InvalidCredentialsError`, `ReplayDetectedError`, `AuthorizationError`, `ResourceNotFoundError`, `ValidationFailedError`, `DependencyUnavailableError`, and `EnrollmentRefusedError`. Other known and future codes use `AnisApiError`.
 
 `isRetryable` reports the published error catalogue. For orders, always use the `OrderResult.kind` recovery rule as well: an error marked retryable does not mean a new operation id is safe.
+
+`signature_expired` and `invalid_content_digest` remain documented in the published catalogue for compatibility but are not currently emitted by the API.

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AnisPartnersClient } from '../../src/client.js';
 import { Money } from '../../src/models/money.js';
 import { KeyedSigner } from '../../src/signing/keyed-signer.js';
@@ -10,6 +10,31 @@ const signer = new KeyedSigner({ sign: () => Promise.resolve(new Uint8Array(64))
 const walletId = '2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26';
 
 describe('AnisPartnersClient transport', () => {
+  it('rejects invalid identifiers through a promise without throwing synchronously', async () => {
+    const client = AnisPartnersClient.create({ options: { authority }, signer });
+    const pending = client.wallets.get('not-a-uuid');
+    expect(pending).toBeInstanceOf(Promise);
+    await expect(pending).rejects.toThrow(/UUID/);
+  });
+
+  it('clears the request timeout timer after a completed call', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = await signedFetchDouble(() => ({
+        body: `{"id":"${walletId}","balance":{"amount":"10.500","currency":"LYD"}}`,
+      }));
+      const client = AnisPartnersClient.create({
+        options: { authority, timeoutMs: 30_000 },
+        signer,
+        fetch: fake.fetcher,
+      });
+      await client.wallets.get(walletId);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('signs a request and parses only the signed response', async () => {
     const fake = await signedFetchDouble(() => ({
       body: `{"id":"${walletId}","balance":{"amount":"10.500","currency":"LYD"}}`,

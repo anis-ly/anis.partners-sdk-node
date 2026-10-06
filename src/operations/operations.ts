@@ -14,6 +14,7 @@ import { parsePartnerProfile, parseWallet } from '../models/wallets.js';
 import type { SignatureDiagnostic } from '../models/enrollment.js';
 import { parseSignatureDiagnostic } from '../models/enrollment.js';
 import { Money } from '../models/money.js';
+import { EMPTY_OBJECT_BODY } from '../signing/content-digest.js';
 import { canonicalUuid } from '../internal/uuid.js';
 import type { PartnerTransport } from './partner-transport.js';
 import type { OrderResult } from './order-result.js';
@@ -21,32 +22,35 @@ import { AnisApiError, refusedAtTheDoor } from '../errors/anis-api-error.js';
 import { RequestSigningError } from '../signing/request-signing-error.js';
 import { UnverifiableResponseError } from '../verification/unverifiable-response-error.js';
 import { safeCounter } from '../internal/safe-telemetry.js';
+import { MalformedResponseError } from '../errors/malformed-response-error.js';
+import { SigningKeyDocumentUnavailableError } from '../errors/signing-key-document-unavailable-error.js';
+import { retryAfterSeconds } from '../internal/retry-after.js';
 
 /** Optional caller cancellation applied to one API call. */
 export interface CallOptions {
   /** Stops waiting for this request; for orders, its outcome is still recorded as unknown. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 /** Optional continuation cursor and cancellation signal for a single page request. */
 export interface PageOptions extends CallOptions {
   /** Cursor returned by the preceding page; omit it to read the first page. */
-  cursor?: string;
+  cursor?: string | undefined;
 }
 
 /** Reads the current profile so callers see policy changes. */
 export class ProfileOperations {
-  /** Creates the profile route group. */
+  /** Shares the verified transport so profile reads follow the client's authority and signing policy. */
   constructor(private readonly transport: PartnerTransport) {}
   /** Reads identity and effective scopes from the live policy. */
-  get(options?: CallOptions): Promise<PartnerProfile> {
+  async get(options?: CallOptions): Promise<PartnerProfile> {
     return this.transport.json(
       {
         method: 'GET',
         route: '/v1/profile',
         path: '/v1/profile',
         profile: 'SafeRead',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       parsePartnerProfile,
     );
@@ -55,40 +59,35 @@ export class ProfileOperations {
 
 /** Lists granted wallets and reads one wallet. */
 export class WalletOperations {
-  /** Creates the wallet route group. */
+  /** Shares the verified transport so wallet reads follow the client's authority and signing policy. */
   constructor(private readonly transport: PartnerTransport) {}
   /** Walks wallet pages so callers need not manage continuation cursors. */
   async *list(options?: CallOptions): AsyncIterable<Wallet> {
-    let cursor: string | undefined;
-    do {
-      const page = await this.listPage(pageOptions(cursor, options));
-      for (const wallet of page.items) yield wallet;
-      cursor = page.nextCursor;
-    } while (cursor !== undefined && cursor.length > 0);
+    yield* pages((cursor) => this.listPage(pageOptions(cursor, options)));
   }
   /** Reads one page when the caller manages the cursor. */
-  listPage(options?: PageOptions): Promise<Page<Wallet>> {
+  async listPage(options?: PageOptions): Promise<Page<Wallet>> {
     return this.transport.json(
       {
         method: 'GET',
         route: '/v1/wallets',
         path: pagePath('/v1/wallets', options?.cursor),
         profile: 'SafeRead',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       (json) => parsePage(json, parseWallet),
     );
   }
   /** Reads one granted wallet by canonical UUID. */
-  get(walletId: string, options?: CallOptions): Promise<Wallet> {
-    const id = canonicalUuid(walletId);
+  async get(walletId: string, options?: CallOptions): Promise<Wallet> {
+    const id = canonicalUuid(walletId, 'walletId');
     return this.transport.json(
       {
         method: 'GET',
         route: '/v1/wallets/{walletId}',
         path: `/v1/wallets/${id}`,
         profile: 'SafeRead',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       parseWallet,
     );
@@ -97,22 +96,22 @@ export class WalletOperations {
 
 /** Reads wallet-priced catalogue categories, subcategories, and cards. */
 export class CatalogueOperations {
-  /** Creates the catalogue route group. */
+  /** Shares the verified transport so catalogue reads use the client's price and signing policy. */
   constructor(private readonly transport: PartnerTransport) {}
   /** Walks category pages for a wallet. */
   async *listCategories(walletId: string, options?: CallOptions): AsyncIterable<CatalogueCategory> {
     yield* pages((cursor) => this.listCategoriesPage(walletId, pageOptions(cursor, options)));
   }
   /** Reads one category page. */
-  listCategoriesPage(walletId: string, options?: PageOptions): Promise<Page<CatalogueCategory>> {
-    const id = canonicalUuid(walletId);
+  async listCategoriesPage(walletId: string, options?: PageOptions): Promise<Page<CatalogueCategory>> {
+    const id = canonicalUuid(walletId, 'walletId');
     return this.transport.json(
       {
         method: 'GET',
         route: '/v1/wallets/{walletId}/catalog/categories',
         path: pagePath(`/v1/wallets/${id}/catalog/categories`, options?.cursor),
         profile: 'SafeRead',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       (json) => parsePage(json, parseCatalogueCategory),
     );
@@ -126,13 +125,13 @@ export class CatalogueOperations {
     yield* pages((cursor) => this.listSubcategoriesPage(walletId, categoryId, pageOptions(cursor, options)));
   }
   /** Reads one subcategory page. */
-  listSubcategoriesPage(
+  async listSubcategoriesPage(
     walletId: string,
     categoryId: string,
     options?: PageOptions,
   ): Promise<Page<CatalogueSubcategory>> {
-    const wallet = canonicalUuid(walletId);
-    const category = canonicalUuid(categoryId);
+    const wallet = canonicalUuid(walletId, 'walletId');
+    const category = canonicalUuid(categoryId, 'categoryId');
     const route = '/v1/wallets/{walletId}/catalog/categories/{categoryId}/subcategories';
     return this.transport.json(
       {
@@ -140,22 +139,22 @@ export class CatalogueOperations {
         route,
         path: pagePath(`/v1/wallets/${wallet}/catalog/categories/${category}/subcategories`, options?.cursor),
         profile: 'SafeRead',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       (json) => parsePage(json, parseCatalogueSubcategory),
     );
   }
   /** Reads one subcategory. */
-  getSubcategory(walletId: string, subcategoryId: string, options?: CallOptions): Promise<CatalogueSubcategory> {
-    const wallet = canonicalUuid(walletId);
-    const subcategory = canonicalUuid(subcategoryId);
+  async getSubcategory(walletId: string, subcategoryId: string, options?: CallOptions): Promise<CatalogueSubcategory> {
+    const wallet = canonicalUuid(walletId, 'walletId');
+    const subcategory = canonicalUuid(subcategoryId, 'subcategoryId');
     return this.transport.json(
       {
         method: 'GET',
         route: '/v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}',
         path: `/v1/wallets/${wallet}/catalog/subcategories/${subcategory}`,
         profile: 'SafeRead',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       parseCatalogueSubcategory,
     );
@@ -165,9 +164,9 @@ export class CatalogueOperations {
     yield* pages((cursor) => this.listCardsPage(walletId, subcategoryId, pageOptions(cursor, options)));
   }
   /** Reads one catalogue card page. */
-  listCardsPage(walletId: string, subcategoryId: string, options?: PageOptions): Promise<Page<CatalogueCard>> {
-    const wallet = canonicalUuid(walletId);
-    const subcategory = canonicalUuid(subcategoryId);
+  async listCardsPage(walletId: string, subcategoryId: string, options?: PageOptions): Promise<Page<CatalogueCard>> {
+    const wallet = canonicalUuid(walletId, 'walletId');
+    const subcategory = canonicalUuid(subcategoryId, 'subcategoryId');
     const route = '/v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}/cards';
     return this.transport.json(
       {
@@ -175,7 +174,7 @@ export class CatalogueOperations {
         route,
         path: pagePath(`/v1/wallets/${wallet}/catalog/subcategories/${subcategory}/cards`, options?.cursor),
         profile: 'SafeRead',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       (json) => parsePage(json, parseCatalogueCard),
     );
@@ -184,7 +183,7 @@ export class CatalogueOperations {
 
 /** Places, resumes, and reads orders under caller-owned operation ids. */
 export class OrderOperations {
-  /** Creates the order route group. */
+  /** Shares the verified transport so order recovery uses the same signer and idempotency rules. */
   constructor(private readonly transport: PartnerTransport) {}
   /** Creates an order under an id the caller has persisted, preventing a dropped answer from causing duplicate purchases. */
   create(
@@ -205,15 +204,15 @@ export class OrderOperations {
     return this.send(walletId, operationId, order, true, options);
   }
   /** Reads order state without dispatching a new order or returning credentials. */
-  get(operationId: string, options?: CallOptions): Promise<Order> {
-    const id = canonicalUuid(operationId);
+  async get(operationId: string, options?: CallOptions): Promise<Order> {
+    const id = canonicalUuid(operationId, 'operationId');
     return this.transport.json(
       {
         method: 'GET',
         route: '/v1/orders/{operationId}',
         path: `/v1/orders/${id}`,
         profile: 'SafeRead',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       parseOrder,
     );
@@ -226,9 +225,24 @@ export class OrderOperations {
     options?: CallOptions,
   ): Promise<OrderResult> {
     guardOrder(order);
-    const wallet = canonicalUuid(walletId);
-    const operation = canonicalUuid(operationId);
-    const bytes = new TextEncoder().encode(JSON.stringify(order));
+    const wallet = canonicalUuid(walletId, 'walletId');
+    const operation = canonicalUuid(operationId, 'operationId');
+    const card = canonicalUuid(order.cardId, 'cardId');
+    let bytes: Uint8Array;
+    try {
+      bytes = new TextEncoder().encode(
+        JSON.stringify({
+          cardId: card,
+          quantity: order.quantity,
+          expectedUnitPrice: order.expectedUnitPrice.toJSON(),
+          expectedTotal: order.expectedTotal.toJSON(),
+          ...(order.externalReference === undefined ? {} : { externalReference: order.externalReference }),
+          useAllowedDebt: order.useAllowedDebt ?? false,
+        }),
+      );
+    } catch (cause) {
+      throw new RequestSigningError(cause);
+    }
     let result: OrderResult;
     let report = true;
     let rethrow = false;
@@ -242,7 +256,7 @@ export class OrderOperations {
         profile: 'OrderMutation',
         operationId: operation,
         body: bytes,
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       });
       if (body.length === 0) {
         outcomeReason = 'empty_body';
@@ -253,7 +267,12 @@ export class OrderOperations {
           cause: emptyBodyError(response.status),
         };
       } else {
-        const decoded = parseBody(body);
+        let decoded: unknown;
+        try {
+          decoded = parseBody(body);
+        } catch {
+          throw new MalformedResponseError('order response');
+        }
         if (decoded === null) {
           outcomeReason = 'empty_body';
           result = {
@@ -263,16 +282,19 @@ export class OrderOperations {
             cause: emptyBodyError(response.status),
           };
         } else if (response.status === 202) {
-          const orderValue = parseOrder(decoded);
+          const orderValue = parseOrderSafely(decoded);
           result = {
             kind: 'processing',
             operationId: operation,
             order: orderValue,
-            suggestedDelayMs: retryAfterMs(response.headers) ?? 5000,
+            suggestedDelayMs:
+              retryAfterSeconds(response.headers.get('retry-after')) === undefined
+                ? 5000
+                : (retryAfterSeconds(response.headers.get('retry-after')) ?? 0) * 1000,
             ...(response.headers.get('location') === null ? {} : { location: response.headers.get('location') ?? '' }),
           };
         } else {
-          const orderValue = parseOrder(decoded);
+          const orderValue = parseOrderSafely(decoded);
           const credentials = orderValue.soldCards ?? [];
           if (credentials.length > 0) {
             result = {
@@ -280,7 +302,7 @@ export class OrderOperations {
               operationId: operation,
               order: orderValue,
               credentials,
-              codesWithheld: orderValue.codesWithheld ?? false,
+              codesWithheld: orderValue.codesWithheld === true || credentials.length === 0,
             };
           } else if (
             headerValues(response.headers.get('idempotency-replayed')).some((value) => value.toLowerCase() === 'true')
@@ -292,7 +314,7 @@ export class OrderOperations {
               operationId: operation,
               order: orderValue,
               credentials,
-              codesWithheld: orderValue.codesWithheld ?? true,
+              codesWithheld: orderValue.codesWithheld === true || credentials.length === 0,
             };
           }
         }
@@ -337,60 +359,64 @@ export class OrderOperations {
 
 /** Lists owned cards and reveals credentials only on explicit protected calls. */
 export class OwnedCardOperations {
-  /** Creates the owned-card route group. */
+  /** Shares the verified transport so card reads and reveals keep the client's response checks. */
   constructor(private readonly transport: PartnerTransport) {}
   /** Walks owned-card pages. */
   async *list(walletId: string, options?: CallOptions): AsyncIterable<MaskedCard> {
     yield* pages((cursor) => this.listPage(walletId, pageOptions(cursor, options)));
   }
   /** Reads one owned-card page. */
-  listPage(walletId: string, options?: PageOptions): Promise<Page<MaskedCard>> {
-    const wallet = canonicalUuid(walletId);
+  async listPage(walletId: string, options?: PageOptions): Promise<Page<MaskedCard>> {
+    const wallet = canonicalUuid(walletId, 'walletId');
     return this.transport.json(
       {
         method: 'GET',
         route: '/v1/wallets/{walletId}/cards',
         path: pagePath(`/v1/wallets/${wallet}/cards`, options?.cursor),
         profile: 'SafeRead',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       (json) => parsePage(json, parseMaskedCard),
     );
   }
   /** Reads a masked owned card. */
-  get(walletId: string, soldCardId: string, options?: CallOptions): Promise<MaskedCard> {
-    const wallet = canonicalUuid(walletId);
-    const card = canonicalUuid(soldCardId);
+  async get(walletId: string, soldCardId: string, options?: CallOptions): Promise<MaskedCard> {
+    const wallet = canonicalUuid(walletId, 'walletId');
+    const card = canonicalUuid(soldCardId, 'soldCardId');
     return this.transport.json(
       {
         method: 'GET',
         route: '/v1/wallets/{walletId}/cards/{soldCardId}',
         path: `/v1/wallets/${wallet}/cards/${card}`,
         profile: 'SafeRead',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       parseMaskedCard,
     );
   }
   /** Reveals one credential using a signed mutation with no body bytes. */
-  reveal(walletId: string, soldCardId: string, options?: CallOptions): Promise<RevealedCredential> {
-    const wallet = canonicalUuid(walletId);
-    const card = canonicalUuid(soldCardId);
+  async reveal(walletId: string, soldCardId: string, options?: CallOptions): Promise<RevealedCredential> {
+    const wallet = canonicalUuid(walletId, 'walletId');
+    const card = canonicalUuid(soldCardId, 'soldCardId');
     return this.transport.json(
       {
         method: 'POST',
         route: '/v1/wallets/{walletId}/cards/{soldCardId}/reveal',
         path: `/v1/wallets/${wallet}/cards/${card}/reveal`,
         profile: 'BodylessNonceMutation',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       parseRevealedCredential,
     );
   }
   /** Reveals every credential on an invoice atomically. */
-  revealInvoice(walletId: string, invoiceId: string, options?: CallOptions): Promise<RevealedCredentialCollection> {
-    const wallet = canonicalUuid(walletId);
-    const invoice = canonicalUuid(invoiceId);
+  async revealInvoice(
+    walletId: string,
+    invoiceId: string,
+    options?: CallOptions,
+  ): Promise<RevealedCredentialCollection> {
+    const wallet = canonicalUuid(walletId, 'walletId');
+    const invoice = canonicalUuid(invoiceId, 'invoiceId');
     const route = '/v1/wallets/{walletId}/invoices/{invoiceId}/cards/reveal';
     return this.transport.json(
       {
@@ -398,7 +424,7 @@ export class OwnedCardOperations {
         route,
         path: `/v1/wallets/${wallet}/invoices/${invoice}/cards/reveal`,
         profile: 'BodylessNonceMutation',
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        signal: options?.signal,
       },
       parseRevealedCredentialCollection,
     );
@@ -407,18 +433,18 @@ export class OwnedCardOperations {
 
 /** Runs the signed, side-effect-free signature admission diagnostic. */
 export class DiagnosticsOperations {
-  /** Creates the diagnostics route group. */
+  /** Shares the verified transport so the self-check uses the same request as the partner API. */
   constructor(private readonly transport: PartnerTransport) {}
   /** Sends the exact empty JSON object expected by the self-check route. */
-  checkSignature(options?: CallOptions): Promise<SignatureDiagnostic> {
+  async checkSignature(options?: CallOptions): Promise<SignatureDiagnostic> {
     return this.transport.json(
       {
         method: 'POST',
         route: '/v1/diagnostics/signature',
         path: '/v1/diagnostics/signature',
         profile: 'BodylessNonceMutation',
-        body: new TextEncoder().encode('{}'),
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        body: EMPTY_OBJECT_BODY,
+        signal: options?.signal,
       },
       parseSignatureDiagnostic,
     );
@@ -427,10 +453,15 @@ export class DiagnosticsOperations {
 
 async function* pages<T>(load: (cursor?: string) => Promise<Page<T>>): AsyncIterable<T> {
   let cursor: string | undefined;
+  const seenCursors = new Set<string>();
   do {
     const page = await load(cursor);
     for (const item of page.items) yield item;
     cursor = page.nextCursor;
+    if (cursor !== undefined && cursor.length > 0) {
+      if (seenCursors.has(cursor)) throw new MalformedResponseError('page continuation cursor');
+      seenCursors.add(cursor);
+    }
   } while (cursor !== undefined && cursor.length > 0);
 }
 function pagePath(path: string, cursor?: string): string {
@@ -439,16 +470,18 @@ function pagePath(path: string, cursor?: string): string {
 function pageOptions(cursor: string | undefined, options?: CallOptions): PageOptions {
   return {
     ...(cursor === undefined ? {} : { cursor }),
-    ...(options?.signal === undefined ? {} : { signal: options.signal }),
+    signal: options?.signal,
   };
 }
 function parseBody(body: Uint8Array): unknown {
   return JSON.parse(new TextDecoder().decode(body)) as unknown;
 }
-function retryAfterMs(headers: Headers): number | undefined {
-  const value = headers.get('retry-after');
-  if (value === null || !/^\d+$/.test(value.trim())) return undefined;
-  return Number(value.trim()) * 1000;
+function parseOrderSafely(value: unknown): Order {
+  try {
+    return parseOrder(value);
+  } catch {
+    throw new MalformedResponseError('order response');
+  }
 }
 function headerValues(value: string | null): string[] {
   return value === null ? [] : value.split(',').map((part) => part.trim());
@@ -456,7 +489,7 @@ function headerValues(value: string | null): string[] {
 function guardOrder(order: CreateOrderRequest): void {
   if (!Number.isInteger(order.quantity) || order.quantity < 1)
     throw new RangeError('An order must be for at least one card.');
-  canonicalUuid(order.cardId);
+  canonicalUuid(order.cardId, 'cardId');
   if (!(order.expectedUnitPrice instanceof Money) || !(order.expectedTotal instanceof Money))
     throw new TypeError('Order prices must be Money values.');
   if (BigInt(order.expectedUnitPrice.amount.replace('.', '')) <= 0n)
@@ -467,7 +500,10 @@ function guardOrder(order: CreateOrderRequest): void {
     throw new TypeError('Order prices must use the same currency.');
 }
 function reportOutcome<T extends OrderResult>(transport: PartnerTransport, operationId: string, result: T): T {
-  safeCounter('anis.partners.order.outcomes', { 'anis.client': 'default', 'anis.order.outcome': result.kind });
+  safeCounter('anis.partners.order.outcomes', {
+    'anis.client': transport.clientName,
+    'anis.order.outcome': result.kind,
+  });
   transport.reportOrderOutcome(operationId, result.kind);
   return result;
 }
@@ -479,7 +515,7 @@ function reportUnknown(
   suggestedDelayMs = 5000,
 ): OrderResult {
   safeCounter('anis.partners.order.outcomes', {
-    'anis.client': 'default',
+    'anis.client': transport.clientName,
     'anis.order.outcome': 'unknown',
     'error.type': reason,
   });
@@ -488,6 +524,8 @@ function reportUnknown(
 }
 
 function errorType(error: unknown): string {
+  if (error instanceof MalformedResponseError) return 'other';
+  if (error instanceof SigningKeyDocumentUnavailableError) return 'connection';
   if (error instanceof UnverifiableResponseError) return 'unverifiable';
   if (error instanceof DOMException && error.name === 'TimeoutError') return 'timeout';
   if (error instanceof TypeError) return 'connection';

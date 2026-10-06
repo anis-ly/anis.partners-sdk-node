@@ -4,7 +4,8 @@ import { loadSampleSettings, runSampleCommand } from './commands.ts';
 const [command = 'help', ...args] = process.argv.slice(2);
 
 try {
-  await runSampleCommand(command, args, await loadSampleSettings());
+  const exitCode = await runSampleCommand(command, args, await loadSampleSettings());
+  if (exitCode !== undefined) process.exitCode = exitCode;
 } catch (error) {
   if (error instanceof Error && error.name === 'DryRunStop') {
     console.log(error.message);

@@ -2,6 +2,8 @@
 
 An order moves money. Persist the operation id and exact request before calling the API. The id becomes `Idempotency-Key`; Anis uses it to recognize the same purchase after a lost answer or process restart.
 
+Create a fresh UUID v4 for every new purchase, then store it with the exact request before sending. Recovery is a signed POST through `resume`, never a GET loop. Do not wrap the SDK fetch function in a retry policy: it can resend the same nonce and trigger replay detection. Recover by calling `resume` with the same operation id and request.
+
 ## Use the wallet price
 
 Read the card through `client.catalogue.listCards(walletId, subcategoryId)`. Send its `unitPrice`, not display-only business, personal, or special-offer prices. Use `Money.multiply()` to calculate the exact total; floating-point arithmetic can make the total differ from the amount Anis checks.
@@ -36,6 +38,7 @@ await writeFile('order-intent.json', JSON.stringify({ operationId, walletId, req
 const result = await client.orders.create(walletId, operationId, request);
 switch (result.kind) {
   case 'completed':
+    // Store credentials before later work can fail or throw.
     await writeFile('credentials.json', JSON.stringify(result.credentials), { mode: 0o600 });
     console.log(result.codesWithheld ? 'Completed; codes were withheld.' : 'Completed; credentials saved.');
     break;
@@ -54,6 +57,8 @@ switch (result.kind) {
 
 `Money` accepts decimal strings only and at most three fractional digits. `useAllowedDebt` defaults to false; set it only when the purchase is intended to use the owner's allowed debt balance.
 
+The SDK does not generate or persist operation ids: create a fresh UUID v4 for each new purchase and keep it with the exact request. Invalid ids and local order values reject the Promise directly with `TypeError` or `RangeError` before anything is sent; they are not `OrderResult` values. A `RequestSigningError` also rejects before sending, but only after the inputs are valid, when signing or request construction fails. A verified order refusal is returned as a result. Set `externalReference` only to a short partner reference for reconciliation; never put credentials or personal data there. If Anis returns `allowed_debt_consent_required` (HTTP 402), enable `useAllowedDebt` only when the owner has explicitly authorized that purchase to use allowed debt.
+
 ## The five outcomes
 
 | `kind`       | Meaning                                                                                                   | Safe next step                                                                                          |
@@ -66,6 +71,8 @@ switch (result.kind) {
 
 `client.orders.get(operationId)` reads state only; it does not dispatch the order or return credentials. `client.orders.resume(walletId, operationId, request)` repeats the same signed POST. The SDK does not keep an order journal for you.
 
-A `processing` result whose order status is `recoveryExhausted` may still complete. Continue to resume the same operation id, allowing minutes between attempts, and contact support@anis.ly with the id.
+On `resume`, a replay-marked final refusal can be `notPlaced`; a fresh refusal that does not prove the earlier attempt stayed unsent remains `unknown`. The five temporary door refusals (`invalid_credentials`, `signature_expired`, `insufficient_scope`, `wallet_not_granted`, and `malformed_signed_request`) suggest waiting 60 seconds before resuming. Store any credentials from a first completed response immediately, before logging, formatting, or other work that can throw. A completed response with withheld codes is still a purchase: never order again to get the codes; contact support@anis.ly with the operation id.
+
+A `processing` result whose order status is `recoveryExhausted` may still complete. Recovery exhausted does not mean failed. Continue to resume the same operation id, allowing minutes between attempts, and contact support@anis.ly with the id.
 
 An order call rethrows caller cancellation, while telemetry records the result as unknown. A timeout, connection failure, or discarded response returns `unknown`. Both require recovery with the same id.

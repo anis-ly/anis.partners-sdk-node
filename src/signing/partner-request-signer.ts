@@ -39,10 +39,10 @@ export class PartnerRequestSigner {
     } catch (cause) {
       throw new RequestSigningError(cause);
     }
-    if (signature.length !== 64)
+    if (!(signature instanceof Uint8Array) || signature.length !== 64)
       throw new RequestSigningError(
         new Error(
-          `The signer returned ${String(signature.length)} bytes; P-256 P1363 requires 64 bytes. A 70–72 byte result is almost certainly DER.`,
+          `The signer must return a 64-byte Uint8Array for P-256 P1363. A 70–72 byte result is almost certainly DER.`,
         ),
       );
     const params = PartnerRequestSignatureBase.parameters(profile, created, expires, this.signer.keyId, inputs.nonce);

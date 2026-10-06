@@ -62,9 +62,11 @@ export function parseSignatureInput(value: string): ParsedSignatureInput | undef
       while (end < value.length && value[end] !== ';') end++;
       const text = value.slice(index, end);
       if (!/^\d+$/.test(text)) return undefined;
-      const number = Number(text);
-      if (!Number.isSafeInteger(number)) return undefined;
-      if (name === 'created') created = number;
+      if (name === 'created') {
+        const integer = BigInt(text);
+        if (integer > 9_223_372_036_854_775_807n) return undefined;
+        created = Number(integer);
+      }
       index = end;
     }
   }
