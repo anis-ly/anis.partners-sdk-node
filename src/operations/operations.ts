@@ -40,7 +40,7 @@ export interface PageOptions extends CallOptions {
 
 /** Reads the current profile so callers see policy changes. */
 export class ProfileOperations {
-  /** Shares the verified transport so profile reads follow the client's authority and signing policy. */
+  /** Shares the client transport so profile reads follow its authority and request signing; the answer is unsigned. */
   constructor(private readonly transport: PartnerTransport) {}
   /** Reads identity and effective scopes from the live policy. */
   async get(options?: CallOptions): Promise<PartnerProfile> {
@@ -59,7 +59,7 @@ export class ProfileOperations {
 
 /** Lists granted wallets and reads one wallet. */
 export class WalletOperations {
-  /** Shares the verified transport so wallet reads follow the client's authority and signing policy. */
+  /** Shares the client transport so wallet reads follow its authority and request signing; answers are unsigned. */
   constructor(private readonly transport: PartnerTransport) {}
   /** Walks wallet pages so callers need not manage continuation cursors. */
   async *list(options?: CallOptions): AsyncIterable<Wallet> {
@@ -96,7 +96,7 @@ export class WalletOperations {
 
 /** Reads wallet-priced catalogue categories, subcategories, and cards. */
 export class CatalogueOperations {
-  /** Shares the verified transport so catalogue reads use the client's price and signing policy. */
+  /** Shares the client transport so catalogue reads use its price and request signing; answers are unsigned. */
   constructor(private readonly transport: PartnerTransport) {}
   /** Walks category pages for a wallet. */
   async *listCategories(walletId: string, options?: CallOptions): AsyncIterable<CatalogueCategory> {
@@ -359,7 +359,10 @@ export class OrderOperations {
 
 /** Lists owned cards and reveals credentials only on explicit protected calls. */
 export class OwnedCardOperations {
-  /** Shares the verified transport so card reads and reveals keep the client's response checks. */
+  /**
+   * Shares the client transport: masked-card reads are answered unsigned, while each reveal answer is verified before
+   * a credential is parsed.
+   */
   constructor(private readonly transport: PartnerTransport) {}
   /** Walks owned-card pages. */
   async *list(walletId: string, options?: CallOptions): AsyncIterable<MaskedCard> {

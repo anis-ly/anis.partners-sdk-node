@@ -23,7 +23,7 @@ export interface SigningKeyLogger {
   warn?(msg: string, fields: Record<string, unknown>): void;
 }
 
-/** Options for fetching and caching the sole unsigned public key document. */
+/** Options for fetching and caching the unsigned public key document. */
 export interface HttpSigningKeySourceOptions {
   /** Partner authority whose published keys verify signed responses. */
   authority: string | URL;
@@ -37,7 +37,7 @@ export interface HttpSigningKeySourceOptions {
   logger?: SigningKeyLogger;
 }
 
-/** Fetches and caches the sole unsigned Partner API document used to verify every signed answer. */
+/** Fetches and caches the unsigned public Partner API document used to verify every signed answer. */
 export class HttpSigningKeySource implements SigningKeySource {
   private readonly authority: URL;
   private readonly cacheSeconds: number;

@@ -1,6 +1,6 @@
 {
   "name": "@anis-ly/partners",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "The Node.js SDK for the Anis Partner API — signed requests, verified responses, typed operations.",
   "license": "MIT",
   "author": "Aniscom for Technical Services (Anis) <support@anis.ly>",

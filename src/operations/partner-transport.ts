@@ -7,7 +7,7 @@ import type { SignatureProfile } from '../signing/signature-profile.js';
 import { PartnerResponseVerifier } from '../verification/partner-response-verifier.js';
 import type { SigningKeySource } from '../verification/signing-key-source.js';
 import type { ValidatedClientOptions } from '../client-options.js';
-import { PARTNER_ROUTES } from './partner-routes.js';
+import { PARTNER_ROUTES, pathMatchesTemplate } from './partner-routes.js';
 import { RandomNonceFactory, type NonceFactory } from '../signing/nonce-factory.js';
 import type { PartnerLogger } from '../observability/logger.js';
 import { UnverifiableResponseError } from '../verification/unverifiable-response-error.js';
@@ -30,7 +30,10 @@ export interface TransportOptions extends ValidatedClientOptions {
   logger?: Partial<PartnerLogger>;
 }
 
-/** Shared pipeline that signs exact request bytes and verifies a complete response before parsing it. */
+/**
+ * Shared pipeline that signs exact request bytes and, on a route whose answers are signed, verifies the complete
+ * response before parsing it.
+ */
 export class PartnerTransport {
   /** Configured bounded telemetry name for this client instance. */
   get clientName(): string {
@@ -41,14 +44,17 @@ export class PartnerTransport {
   private readonly verifier: PartnerResponseVerifier;
   private readonly nonceFactory: NonceFactory;
 
-  /** Keeps request signing and response verification together so callers cannot return an unverified answer. */
+  /** Keeps request signing and response verification together so no signed route can return an unverified answer. */
   constructor(private readonly settings: TransportOptions) {
     if (settings.signer !== undefined) this.requestSigner = new PartnerRequestSigner(settings.signer);
     this.verifier = new PartnerResponseVerifier(settings.keySource, undefined, settings.logger);
     this.nonceFactory = settings.nonceFactory ?? new RandomNonceFactory();
   }
 
-  /** Sends one API request; response data is not parsed until its signature and digest pass. */
+  /**
+   * Sends one API request. On a signed route, response data is not parsed until its signature and digest pass; an
+   * unsigned route's answer is passed through as received, whatever signature headers it carries.
+   */
   async send(request: {
     method: string;
     route: string;
@@ -92,6 +98,12 @@ export class PartnerTransport {
         } catch (cause) {
           throw new RequestSigningError(cause);
         }
+        if (!pathMatchesTemplate(route.template, url.pathname)) {
+          safeSpan(span, (active) => active.setStatus({ code: SpanStatusCode.ERROR, message: 'route path mismatch' }));
+          throw new RequestSigningError(new Error('The request path must be an instance of its route template.'));
+        }
+        // Stated per route, never inferred from the answer: a signed route's answer with no signature is refused.
+        const signedResponse = route.signedResponse;
         const body = request.body ?? new Uint8Array();
         const headers = new Headers();
         headers.set('Accept-Encoding', 'identity');
@@ -190,7 +202,7 @@ export class PartnerTransport {
           });
           response = receivedResponse;
           const contentEncoding = receivedResponse.headers.get('content-encoding');
-          if (contentEncoding !== null && contentEncoding.toLowerCase() !== 'identity') {
+          if (signedResponse && contentEncoding !== null && contentEncoding.toLowerCase() !== 'identity') {
             await cancelBody(receivedResponse);
             safeCounter('anis.partners.response.verification.failures', {
               'anis.verification.failure': 'content_digest_mismatch',
@@ -209,30 +221,31 @@ export class PartnerTransport {
           receivedResponse.headers.forEach((value, name) => {
             mergedHeaders[name] = value;
           });
-          try {
-            const requestSignatureInput = headers.get('Signature-Input');
-            await this.verifier.verify(
-              {
-                status: receivedResponse.status,
-                headers: mergedHeaders,
-                body: responseBody,
-                ...(requestSignatureInput === null ? {} : { requestSignatureInput }),
-              },
-              { signal },
-            );
-          } catch (error) {
-            if (error instanceof UnverifiableResponseError)
-              safeCounter('anis.partners.response.verification.failures', {
-                'anis.verification.failure': error.failure,
-              });
-            safeSpan(span, (active) => active.setStatus({ code: SpanStatusCode.ERROR, message: 'unverifiable' }));
-            if (error instanceof UnverifiableResponseError)
-              safeLog(this.settings.logger, 'error', `Response discarded: failure=${error.failure}.`, {
-                eventId: 1003,
-                failure: error.failure,
-              });
-            throw error;
-          }
+          if (signedResponse)
+            try {
+              const requestSignatureInput = headers.get('Signature-Input');
+              await this.verifier.verify(
+                {
+                  status: receivedResponse.status,
+                  headers: mergedHeaders,
+                  body: responseBody,
+                  ...(requestSignatureInput === null ? {} : { requestSignatureInput }),
+                },
+                { signal },
+              );
+            } catch (error) {
+              if (error instanceof UnverifiableResponseError)
+                safeCounter('anis.partners.response.verification.failures', {
+                  'anis.verification.failure': error.failure,
+                });
+              safeSpan(span, (active) => active.setStatus({ code: SpanStatusCode.ERROR, message: 'unverifiable' }));
+              if (error instanceof UnverifiableResponseError)
+                safeLog(this.settings.logger, 'error', `Response discarded: failure=${error.failure}.`, {
+                  eventId: 1003,
+                  failure: error.failure,
+                });
+              throw error;
+            }
           safeSpan(span, (active) => active.setAttribute('http.response.status_code', receivedResponse.status));
           const requestId = receivedResponse.headers.get('x-request-id');
           if (requestId !== null) safeSpan(span, (active) => active.setAttribute('anis.request_id', requestId));
@@ -345,7 +358,7 @@ export class PartnerTransport {
     });
   }
 
-  /** Sends and parses a verified non-empty JSON success. */
+  /** Sends and parses a non-empty JSON success, verified first when the route's answers are signed. */
   async json<T>(request: Parameters<PartnerTransport['send']>[0], parse: (value: unknown) => T): Promise<T> {
     const result = await this.send(request);
     if (result.body.length === 0)

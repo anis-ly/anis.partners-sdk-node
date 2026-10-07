@@ -14,13 +14,13 @@ export class AnisApiError extends AnisPartnersError {
   readonly code: ErrorCode;
   /** Exact wire code, including an unknown future value. */
   readonly rawCode?: string;
-  /** HTTP status of the verified response. */
+  /** HTTP status of the response, verified first when the route's answers are signed. */
   readonly status: number;
   /** Correlation id to quote when asking Anis about the call. */
   readonly requestId?: string;
   /** Permanent documentation link for this code. */
   readonly typeUri?: string;
-  /** Signed Retry-After value in seconds, when supplied. */
+  /** Retry-After value in seconds, when supplied; covered by the signature on a signed route. */
   readonly retryAfter?: number;
   /** True when Anis returned the recorded refusal for this operation id. */
   readonly isReplayed: boolean;
@@ -30,7 +30,7 @@ export class AnisApiError extends AnisPartnersError {
   readonly orderOutcome: OrderRefusalOutcome;
 
   /**
-   * Creates a structured API error from a verified problem.
+   * Creates a structured API error from a received problem, verified first when the route's answers are signed.
    *
    * @remarks The code is the stable branching contract. Titles and details change with language and copy updates, so
    * callers that branch on the message can break without any API behavior changing.
@@ -113,7 +113,12 @@ export function refusedAtTheDoor(code: ErrorCode): boolean {
   );
 }
 
-/** Parses a verified refusal and attaches typed errors for the cases partners commonly handle differently. */
+/**
+ * Parses a refusal and attaches typed errors for the cases partners commonly handle differently.
+ *
+ * @remarks The transport calls this only after a signed route's refusal has verified; an information route's refusal
+ * is unsigned and maps the same way.
+ */
 export function createAnisApiError(body: Uint8Array | string, status: number, headers?: Headers): AnisApiError {
   const problem = parseProblemOrFallback(body, status);
   const retryAfter = retryAfterSeconds(headers?.get('retry-after'));
