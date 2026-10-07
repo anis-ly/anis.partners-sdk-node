@@ -60,7 +60,10 @@ describe('low-level transport security', () => {
     }
   });
 
-  it('verifies a key-document route used for a profile path instead of accepting unsigned JSON', async () => {
+  it.each([
+    ['the key document', '/.well-known/partner-signing-keys.json', '/v1/profile'],
+    ['an information read', '/v1/profile', '/v1/orders/2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26'],
+  ])('refuses %s route named for another path, so its unsigned answers cannot be borrowed', async (_, route, path) => {
     const fetcher = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(new Response('{"profile":"unsigned"}')));
     const transport = new PartnerTransport({
       ...validateClientOptions({ authority: 'https://partners.example' }),
@@ -70,13 +73,9 @@ describe('low-level transport security', () => {
     });
 
     await expect(
-      transport.send({
-        method: 'GET',
-        route: '/.well-known/partner-signing-keys.json',
-        path: '/v1/profile',
-      }),
-    ).rejects.toMatchObject({ failure: 'signature_missing' });
-    expect(fetcher).toHaveBeenCalledTimes(1);
+      transport.send({ method: 'GET', route, path, ...(route === '/v1/profile' ? { profile: 'SafeRead' } : {}) }),
+    ).rejects.toMatchObject({ name: 'RequestSigningError' });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it('sends raw bytes without following a redirect', async () => {
@@ -91,7 +90,12 @@ describe('low-level transport security', () => {
     });
 
     await expect(
-      transport.send({ method: 'GET', route: '/v1/profile', path: '/v1/profile', profile: 'SafeRead' }),
+      transport.send({
+        method: 'GET',
+        route: '/v1/orders/{operationId}',
+        path: '/v1/orders/2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26',
+        profile: 'SafeRead',
+      }),
     ).rejects.toMatchObject({ failure: 'signature_missing' });
     expect(fetcher).toHaveBeenCalledTimes(1);
     const init = fetcher.mock.calls[0]?.[1];
@@ -101,7 +105,7 @@ describe('low-level transport security', () => {
 
   it('preserves identity encoding and manual redirects on the client key-document fetch', async () => {
     const fake = await signedFetchDouble(() => ({
-      body: '{"id":"2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26","name":"Main","currency":"LYD","balance":{"amount":"1.000","currency":"LYD"}}',
+      body: '{"operationId":"2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26","status":"completed"}',
     }));
     const calls: RequestInit[] = [];
     const fetcher: typeof globalThis.fetch = (resource, init) => {
@@ -114,7 +118,7 @@ describe('low-level transport security', () => {
       fetch: fetcher,
     });
 
-    await client.wallets.get('2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26');
+    await client.orders.get('2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26');
 
     expect(calls).toHaveLength(2);
     expect(calls[0]?.redirect).toBe('manual');

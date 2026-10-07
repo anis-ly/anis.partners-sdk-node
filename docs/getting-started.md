@@ -77,7 +77,7 @@ const client = AnisPartnersClient.create({
 });
 ```
 
-The signature lifetime is limited to 1–60 seconds. The API may accept a wider window, but the SDK verifies answers only within 60 seconds of its clock; longer request signatures could make a valid order answer too old to accept. Keep the host clock synchronized. Requests do not retry automatically: a host retry policy can repeat a reveal or obscure the one-time credentials from an order. Never configure the injected fetch to retry a request; it would reuse the same nonce. Call the matching SDK operation again to recover an order.
+The signature lifetime is limited to 1–60 seconds. The API may accept a wider window, but the SDK verifies signed answers only within 60 seconds of its clock; longer request signatures could make a valid order answer too old to accept. Keep the host clock synchronized. Requests do not retry automatically: a host retry policy can repeat a reveal or obscure the one-time credentials from an order. Never configure the injected fetch to retry a request; it would reuse the same nonce. Call the matching SDK operation again to recover an order.
 
 ## 3. Make a first call
 
@@ -87,6 +87,8 @@ console.log(profile.application?.scopes); // permissions effective for this call
 ```
 
 Permissions are evaluated on each request. Read the profile when you need to understand current access instead of assuming a permission remains unchanged.
+
+The request is signed like every call, but the profile is an information read: Anis answers it, like the wallet, catalogue and owned-card reads, without a response signature, so the SDK reads it as received over HTTPS. Answers that move money, deliver card codes or establish a key — orders, order reads, reveals, enrollment and the signature self-test — are signed, and the SDK refuses any of them that does not verify. See [security](security.md#response-verification-is-mandatory-on-signed-routes).
 
 For each new order, generate a fresh UUID v4 with `crypto.randomUUID()`. Persist that id and the exact request before calling `orders.create`; reuse both only when recovering that purchase.
 

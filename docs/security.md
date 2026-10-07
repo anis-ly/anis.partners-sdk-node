@@ -28,11 +28,13 @@ The browser must never hold the private key. Browser code can be inspected or mo
 
 ## Protect the authority connection
 
-Use an HTTPS authority for every network host. The response-signing-key document is unsigned, so plain HTTP would let someone on the network replace it, forge answers, and read card codes in transit. HTTP is accepted only for `localhost`, `127.0.0.1`, and `::1` during local testing.
+Use an HTTPS authority for every network host. The response-signing-key document and the information reads are unsigned, so plain HTTP would let someone on the network replace the key document, forge answers, alter balances and catalogue prices, and read card codes in transit. HTTP is accepted only for `localhost`, `127.0.0.1`, and `::1` during local testing.
 
-## Response verification is mandatory
+## Response verification is mandatory on signed routes
 
-The SDK verifies the signed response and its body digest before parsing any answer. Do not pass an unverified response to business logic or add an option that bypasses verification. Reads that fail verification throw `UnverifiableResponseError`; orders return `unknown` because the purchase may have completed.
+Anis signs every answer that moves money, delivers card codes or establishes a key, and the SDK verifies the signature and body digest of each of those answers before parsing it. The signed routes are order creation and recovery, order reads, card and invoice reveals, the four enrollment routes, and the signature self-test. On these routes the success and every refusal are signed: an answer with no signature fails as `signature_missing`, and nothing in it — not even its error code — is used. Reads that fail verification throw `UnverifiableResponseError`; orders return `unknown` because the purchase may have completed. There is no option that bypasses this; do not pass an unverified answer from these routes to business logic.
+
+Information reads — the profile, wallets, the four catalogue reads, and the owned-card list and masked-card read — are answered unsigned (they still carry `Content-Digest` and `X-Request-Id`). The SDK reads those answers, success or refusal, as received over the HTTPS connection, and it does not fetch the signing-key document for them; if such an answer carries a signature anyway, the SDK ignores it. Which routes are signed is fixed per route in the SDK's route table and checked against the published contract; it is never inferred from whether an answer happens to carry a signature, so a stripped signature on a signed route is always refused. HTTPS is what protects information reads, which is one more reason the authority must use HTTPS.
 
 ## Enrollment and rotation
 
@@ -42,4 +44,4 @@ Read the safety code from your own enrollment software and repeat it to Anis sta
 
 ## Logs and clocks
 
-Never log credentials, signing keys, enrollment tokens, signatures, signature bases, or nonces. Keep the host clock synchronized: stale or future timestamps can make requests fail verification. The SDK's logger fields and OpenTelemetry tags omit secret values by design.
+Never log credentials, signing keys, enrollment tokens, signatures, signature bases, or nonces. Keep the host clock synchronized: stale or future timestamps can make requests, and signed answers, fail verification. The SDK's logger fields and OpenTelemetry tags omit secret values by design.

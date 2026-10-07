@@ -17,7 +17,7 @@ describe('signing-key fetch cancellation', () => {
     });
     const controller = new AbortController();
 
-    const operation = client.profile.get({ signal: controller.signal });
+    const operation = client.orders.get(uuid, { signal: controller.signal });
     await fetch.keyRequestStarted;
     controller.abort();
 

@@ -8,7 +8,7 @@ import { componentsOf, type SignatureProfile } from '../../src/signing/signature
 import { renderErrorCodes } from '../../tools/generate-errors.mjs';
 
 interface OpenApiOperation {
-  'x-anis-route'?: { requestKind?: string };
+  'x-anis-route'?: { requestKind?: string; signedResponse?: boolean };
 }
 
 interface OpenApiDocument {
@@ -68,6 +68,53 @@ describe('contract drift', () => {
         expect(actualProfile).toBe(expected);
       }
     }
+  });
+
+  it('declares for every published route whether its answers are signed', () => {
+    for (const [path, operations] of Object.entries(openApi.paths)) {
+      for (const [method, operation] of Object.entries(operations)) {
+        const declared = operation['x-anis-route']?.signedResponse;
+        const actual = PARTNER_ROUTES.find((route) => route.method === method.toUpperCase() && route.template === path);
+
+        expect(declared, `${method.toUpperCase()} ${path} must declare signedResponse`).toBeTypeOf('boolean');
+        expect(actual?.signedResponse, `${method.toUpperCase()} ${path}`).toBe(declared);
+      }
+    }
+  });
+
+  it('signs exactly the answers that move money, deliver card codes or establish a key', () => {
+    const signed = PARTNER_ROUTES.filter((route) => route.signedResponse).map((route) => `${route.method} ${route.template}`);
+    const unsigned = PARTNER_ROUTES.filter((route) => !route.signedResponse).map(
+      (route) => `${route.method} ${route.template}`,
+    );
+
+    expect(signed.sort()).toEqual(
+      [
+        'POST /v1/wallets/{walletId}/orders',
+        'GET /v1/orders/{operationId}',
+        'POST /v1/wallets/{walletId}/cards/{soldCardId}/reveal',
+        'POST /v1/wallets/{walletId}/invoices/{invoiceId}/cards/reveal',
+        'GET /v1/enrollments/{invitationId}',
+        'POST /v1/enrollments/{invitationId}/keys',
+        'POST /v1/enrollments/{invitationId}/proof',
+        'GET /v1/enrollments/{invitationId}/status',
+        'POST /v1/diagnostics/signature',
+      ].sort(),
+    );
+    expect(unsigned.sort()).toEqual(
+      [
+        'GET /v1/profile',
+        'GET /v1/wallets',
+        'GET /v1/wallets/{walletId}',
+        'GET /v1/wallets/{walletId}/catalog/categories',
+        'GET /v1/wallets/{walletId}/catalog/categories/{categoryId}/subcategories',
+        'GET /v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}',
+        'GET /v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}/cards',
+        'GET /v1/wallets/{walletId}/cards',
+        'GET /v1/wallets/{walletId}/cards/{soldCardId}',
+        'GET /.well-known/partner-signing-keys.json',
+      ].sort(),
+    );
   });
 
   it('recognizes every public error code in the catalogue', () => {

@@ -3,139 +3,158 @@
   "info": {
     "title": "Partner V1 public API",
     "version": "1.0.0",
-    "description": "Reduced copy of the Anis Partner API contract: the route map and the signing kind of each route, which is all the SDK drift tests read. The complete reference is https://developers.anis.ly/openapi.json."
+    "description": "Reduced copy of the Anis Partner API contract: the route map, the signing kind of each route, and whether its answers are signed, which is all the SDK drift tests read. signedResponse is reduced from the full contract: true where every declared answer carries Signature and Signature-Input, false where none does. The complete reference is https://developers.anis.ly/openapi.json."
   },
   "paths": {
     "/v1/profile": {
       "get": {
         "x-anis-route": {
-          "requestKind": "safeRead"
+          "requestKind": "safeRead",
+          "signedResponse": false
         }
       }
     },
     "/v1/wallets": {
       "get": {
         "x-anis-route": {
-          "requestKind": "safeRead"
+          "requestKind": "safeRead",
+          "signedResponse": false
         }
       }
     },
     "/v1/wallets/{walletId}": {
       "get": {
         "x-anis-route": {
-          "requestKind": "safeRead"
+          "requestKind": "safeRead",
+          "signedResponse": false
         }
       }
     },
     "/v1/wallets/{walletId}/catalog/categories": {
       "get": {
         "x-anis-route": {
-          "requestKind": "safeRead"
+          "requestKind": "safeRead",
+          "signedResponse": false
         }
       }
     },
     "/v1/wallets/{walletId}/catalog/categories/{categoryId}/subcategories": {
       "get": {
         "x-anis-route": {
-          "requestKind": "safeRead"
+          "requestKind": "safeRead",
+          "signedResponse": false
         }
       }
     },
     "/v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}": {
       "get": {
         "x-anis-route": {
-          "requestKind": "safeRead"
+          "requestKind": "safeRead",
+          "signedResponse": false
         }
       }
     },
     "/v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}/cards": {
       "get": {
         "x-anis-route": {
-          "requestKind": "safeRead"
+          "requestKind": "safeRead",
+          "signedResponse": false
         }
       }
     },
     "/v1/wallets/{walletId}/orders": {
       "post": {
         "x-anis-route": {
-          "requestKind": "orderMutation"
+          "requestKind": "orderMutation",
+          "signedResponse": true
         }
       }
     },
     "/v1/orders/{operationId}": {
       "get": {
         "x-anis-route": {
-          "requestKind": "safeRead"
+          "requestKind": "safeRead",
+          "signedResponse": true
         }
       }
     },
     "/v1/wallets/{walletId}/cards": {
       "get": {
         "x-anis-route": {
-          "requestKind": "safeRead"
+          "requestKind": "safeRead",
+          "signedResponse": false
         }
       }
     },
     "/v1/wallets/{walletId}/cards/{soldCardId}": {
       "get": {
         "x-anis-route": {
-          "requestKind": "safeRead"
+          "requestKind": "safeRead",
+          "signedResponse": false
         }
       }
     },
     "/v1/wallets/{walletId}/cards/{soldCardId}/reveal": {
       "post": {
         "x-anis-route": {
-          "requestKind": "bodylessNonceMutation"
+          "requestKind": "bodylessNonceMutation",
+          "signedResponse": true
         }
       }
     },
     "/v1/wallets/{walletId}/invoices/{invoiceId}/cards/reveal": {
       "post": {
         "x-anis-route": {
-          "requestKind": "bodylessNonceMutation"
+          "requestKind": "bodylessNonceMutation",
+          "signedResponse": true
         }
       }
     },
     "/v1/diagnostics/signature": {
       "post": {
         "x-anis-route": {
-          "requestKind": "bodylessNonceMutation"
+          "requestKind": "bodylessNonceMutation",
+          "signedResponse": true
         }
       }
     },
     "/v1/enrollments/{invitationId}": {
       "get": {
         "x-anis-route": {
-          "requestKind": "enrollmentToken"
+          "requestKind": "enrollmentToken",
+          "signedResponse": true
         }
       }
     },
     "/v1/enrollments/{invitationId}/keys": {
       "post": {
         "x-anis-route": {
-          "requestKind": "enrollmentToken"
+          "requestKind": "enrollmentToken",
+          "signedResponse": true
         }
       }
     },
     "/v1/enrollments/{invitationId}/proof": {
       "post": {
         "x-anis-route": {
-          "requestKind": "enrollmentToken"
+          "requestKind": "enrollmentToken",
+          "signedResponse": true
         }
       }
     },
     "/v1/enrollments/{invitationId}/status": {
       "get": {
         "x-anis-route": {
-          "requestKind": "enrollmentToken"
+          "requestKind": "enrollmentToken",
+          "signedResponse": true
         }
       }
     },
     "/.well-known/partner-signing-keys.json": {
       "get": {
         "x-anis-route": {
-          "requestKind": "public"
+          "requestKind": "public",
+          "signedResponse": false
         }
       }
     }

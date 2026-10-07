@@ -1,6 +1,6 @@
 # Anis Partner SDK for Node.js
 
-The `@anis-ly/partners` package calls the Anis Partner API with signed requests, verifies every response before parsing it, and returns typed models and order outcomes. It targets Node.js 22 and later.
+The `@anis-ly/partners` package calls the Anis Partner API with signed requests, verifies every signed answer before parsing it, and returns typed models and order outcomes. It targets Node.js 22 and later.
 
 > **Disclaimer.** This SDK is an optional helper provided free of charge under the MIT License, "as is", without
 > warranty of any kind. Anis (Aniscom for Technical Services) accepts no responsibility or liability for its use or for
@@ -71,7 +71,7 @@ CommonJS users can load the package with: `const { AnisPartnersClient } = requir
 - `OrderResult` is a discriminated union. Credentials appear only on `completed`; a `replayed` result is state only.
 - Credential objects and completed order results contain secret fields. `JSON.stringify` includes voucher and serial values; do not log or serialize them casually. Persist released credentials in a secret store with owner-only permissions.
 - A refusal that may follow an earlier attempt is `unknown`; a final business refusal is `notPlaced`.
-- Every response is verified before the SDK returns or parses it. An unverifiable read is discarded, and an unverifiable order has an unknown outcome.
+- Every request is signed. Every answer that moves money, delivers card codes or establishes a key — orders, order reads, card and invoice reveals, enrollment, and the signature self-test — is verified before the SDK returns or parses it, success and refusal alike; one that arrives unsigned or fails verification is discarded, and an unverifiable order has an unknown outcome. Profile, wallet, catalogue and owned-card reads are information answers that Anis does not sign; the SDK reads them as received over HTTPS. Which routes are signed is fixed per route in the SDK, never guessed from the answer.
 - Logging and telemetry are opt-in listeners and omit signatures, signature bases, nonces, enrollment tokens, and credentials.
 
 ## What is covered
@@ -80,7 +80,7 @@ All 19 published API routes are grouped under `profile`, `wallets`, `catalogue`,
 
 ## How it is proven
 
-The tests include 9 request vectors, 39 response vectors, 2 enrollment proof vectors, and 4 safety-code vector files; in-memory client and transport tests; and contract drift checks against the checked-in route and error contracts. `npm run check` runs formatting, strict type checks, lint, tests, and a package build.
+The tests include 9 request vectors, 39 response vectors, 2 enrollment proof vectors, and 4 safety-code vector files; in-memory client and transport tests; and contract drift checks against the checked-in route, response-signing and error contracts. `npm run check` runs formatting, strict type checks, lint, tests, and a package build.
 
 Verified end to end against a live Anis environment (October 2026).
 

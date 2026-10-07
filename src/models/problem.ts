@@ -1,6 +1,6 @@
 import { asObject, optionalInteger, optionalString } from './model-parsing.js';
 
-/** RFC 9457 problem returned for a verified refusal. Branch on code, never localized title or detail. */
+/** RFC 9457 problem returned for a refusal. Branch on code, never localized title or detail. */
 export interface Problem {
   /** Permanent documentation URI for this error. */
   type?: string;

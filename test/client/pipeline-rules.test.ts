@@ -10,6 +10,7 @@ import { signedFetchDouble } from '../support/signed-fetch.js';
 import { InMemoryTelemetry } from '../support/telemetry.js';
 
 const uuid = '2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26';
+const orderBody = `{"operationId":"${uuid}","status":"completed"}`;
 const signer = new KeyedSigner({ sign: () => Promise.resolve(new Uint8Array(64)) }, uuid);
 const telemetry = new InMemoryTelemetry();
 const clientModule = import('../../src/client.js');
@@ -52,7 +53,7 @@ describe('signed request pipeline rules', () => {
 
   it('does not return a body whose digest changed after signing', async () => {
     const fake = await signedFetchDouble(() => ({
-      body: `{"id":"${uuid}","balance":{"amount":"1","currency":"LYD"}}`,
+      body: orderBody,
     }));
     const tampered: typeof globalThis.fetch = async (resource, init) => {
       const response = await fake.fetcher(resource, init);
@@ -61,18 +62,18 @@ describe('signed request pipeline rules', () => {
       return new Response(bytes, { status: response.status, headers: response.headers });
     };
 
-    await expect((await create(tampered)).wallets.get(uuid)).rejects.toMatchObject({
+    await expect((await create(tampered)).orders.get(uuid)).rejects.toMatchObject({
       failure: 'content_digest_mismatch',
     });
   });
 
   it('discards a signed answer that still carries content encoding', async () => {
     const fake = await signedFetchDouble(() => ({
-      body: `{"id":"${uuid}","name":"Main","currency":"LYD","balance":{"amount":"1.000","currency":"LYD"}}`,
+      body: orderBody,
       headers: { 'Content-Encoding': 'gzip' },
     }));
 
-    await expect((await create(fake.fetcher)).wallets.get(uuid)).rejects.toMatchObject({
+    await expect((await create(fake.fetcher)).orders.get(uuid)).rejects.toMatchObject({
       failure: 'content_digest_mismatch',
     });
   });
@@ -80,7 +81,7 @@ describe('signed request pipeline rules', () => {
   it('counts a discarded response under its verification failure rule', async () => {
     const before = telemetry.measurements.length;
     const fake = await signedFetchDouble(() => ({
-      body: `{"id":"${uuid}","name":"Main","currency":"LYD","balance":{"amount":"1.000","currency":"LYD"}}`,
+      body: orderBody,
     }));
     const tampered: typeof globalThis.fetch = async (resource, init) => {
       const response = await fake.fetcher(resource, init);
@@ -89,7 +90,7 @@ describe('signed request pipeline rules', () => {
       return new Response(bytes, { status: response.status, headers: response.headers });
     };
 
-    await expect((await create(tampered)).wallets.get(uuid)).rejects.toMatchObject({
+    await expect((await create(tampered)).orders.get(uuid)).rejects.toMatchObject({
       failure: 'content_digest_mismatch',
     });
 
@@ -104,7 +105,7 @@ describe('signed request pipeline rules', () => {
 
   it('counts a content-encoded response as a digest verification failure', async () => {
     const before = telemetry.measurements.length;
-    const fake = await signedFetchDouble(() => ({ body: `{"id":"${uuid}"}` }));
+    const fake = await signedFetchDouble(() => ({ body: orderBody }));
     const encoded: typeof globalThis.fetch = async (resource, init) => {
       const response = await fake.fetcher(resource, init);
       const headers = new Headers(response.headers);
@@ -112,7 +113,7 @@ describe('signed request pipeline rules', () => {
       return new Response(await response.arrayBuffer(), { status: response.status, headers });
     };
 
-    await expect((await create(encoded)).profile.get()).rejects.toMatchObject({
+    await expect((await create(encoded)).orders.get(uuid)).rejects.toMatchObject({
       failure: 'content_digest_mismatch',
     });
 
@@ -163,7 +164,7 @@ describe('signed request pipeline rules', () => {
   });
 
   it('does not label a shared signing-key cache hit as event 1005', async () => {
-    const fake = await signedFetchDouble(() => ({ body: `{"id":"${uuid}"}` }));
+    const fake = await signedFetchDouble(() => ({ body: orderBody }));
     const authority = 'https://partners.example';
     const cacheKey = `anis_partners_keys_${createHash('sha256').update(authority).digest('hex').slice(0, 32)}`;
     const envelope = JSON.stringify({
@@ -198,13 +199,13 @@ describe('signed request pipeline rules', () => {
       logger,
     });
 
-    await client.profile.get();
+    await client.orders.get(uuid);
 
     const cacheRead = logs.find((entry) => entry.message === 'signing keys read from the shared cache');
     expect(cacheRead).toBeDefined();
     expect(cacheRead?.fields.eventId).toBeUndefined();
     expect(fake.requests).toHaveLength(1);
-    expect(fake.requests[0]?.url.pathname).toBe('/v1/profile');
+    expect(fake.requests[0]?.url.pathname).toBe(`/v1/orders/${uuid}`);
     expect(
       telemetry.measurements
         .slice(before)
@@ -348,14 +349,14 @@ describe('signed request pipeline rules', () => {
 
   it('reports a signing-key fetch failure as a connection error, not a verification failure', async () => {
     const before = telemetry.measurements.length;
-    const signed = await signedFetchDouble(() => ({ body: `{"id":"${uuid}"}` }));
+    const signed = await signedFetchDouble(() => ({ body: orderBody }));
     const fetcher: typeof globalThis.fetch = async (resource, init) => {
       const url = new URL(typeof resource === 'string' || resource instanceof URL ? resource : resource.url);
       if (url.pathname === '/.well-known/partner-signing-keys.json') throw new TypeError('key service unavailable');
       return signed.fetcher(resource, init);
     };
 
-    await expect((await create(fetcher)).profile.get()).rejects.toMatchObject({
+    await expect((await create(fetcher)).orders.get(uuid)).rejects.toMatchObject({
       name: 'SigningKeyDocumentUnavailableError',
     });
 

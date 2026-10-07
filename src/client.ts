@@ -16,7 +16,7 @@ import {
   WalletOperations,
 } from './operations/operations.js';
 
-/** Dependencies used to create a signed and verified client. */
+/** Dependencies used to create a client that signs every request and verifies every signed answer. */
 export interface AnisPartnersClientCreateOptions {
   /** Validated authority and request settings. */
   options: ClientOptions;
@@ -30,7 +30,13 @@ export interface AnisPartnersClientCreateOptions {
   logger?: Partial<PartnerLogger> | undefined;
 }
 
-/** Node client whose requests are signed and whose complete responses are verified before parsing. */
+/**
+ * Node client whose requests are all signed, and whose answers on the routes Anis signs are verified in full before
+ * parsing.
+ *
+ * @remarks Orders, card reveals, enrollment and the signature self-test are signed; profile, wallet, catalogue and
+ * owned-card reads are information reads that Anis answers unsigned, so they are parsed as received over HTTPS.
+ */
 export class AnisPartnersClient {
   /** Reads identity and live scopes. */
   readonly profile: ProfileOperations;

@@ -11,7 +11,7 @@ import {
 import type { PartnerLogger } from '../observability/logger.js';
 import { AnisPartnersTelemetry } from '../observability/telemetry-names.js';
 
-const packageVersion = '1.0.0';
+const packageVersion = '1.1.0';
 const histograms = new WeakMap<Meter, Map<string, Histogram>>();
 const counters = new WeakMap<Meter, Map<string, Counter>>();
 
