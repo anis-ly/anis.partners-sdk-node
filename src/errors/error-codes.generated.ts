@@ -22,6 +22,7 @@ export const ERROR_CODES = [
   'invitation_invalid',
   'invoice_reveal_limit_exceeded',
   'key_duplicate',
+  'key_not_revocable',
   'key_proof_invalid',
   'malformed_signed_request',
   'operation_processing',

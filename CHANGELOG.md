@@ -2,6 +2,18 @@
 
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - 2026-10-11
+
+### Breaking changes
+
+1.x is deprecated — upgrade.
+
+- Require `tag="anis-response-v2"` and bind both raw request signature headers in every signed machine answer.
+- Reject compromised response keys and signatures outside next/retired key signing intervals.
+- Use `/owned-cards` routes and `soldCardId` / `operationId` on masked cards. Share `CardSummary` across owned cards, reveals, and order credentials; include logo and category on catalogue cards and description on subcategory list entries.
+- Wallet currency is available through `balance.currency`. Wire money is non-negative with exactly three decimal places and uppercase three-letter currency codes.
+- Add `access.suspendApplication(reason)`, `access.revokeKey(keyId, reason)`, and `catalogue.getCard(walletId, cardId)`.
+
 ## [1.1.0] - 2026-10-07
 
 Anis now signs only the answers that move money, deliver card codes or establish a key, and this release follows that contract.

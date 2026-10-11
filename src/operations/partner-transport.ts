@@ -16,6 +16,8 @@ import { safeCounter, safeHistogram, safeLog, safeSpan, withSafeSpan } from '../
 import { MalformedResponseError } from '../errors/malformed-response-error.js';
 import { SigningKeyDocumentUnavailableError } from '../errors/signing-key-document-unavailable-error.js';
 
+const SDK_USER_AGENT = 'anis-partners-sdk-node/2.0.0';
+
 /** Frozen request settings used by all route groups. */
 export interface TransportOptions extends ValidatedClientOptions {
   /** Route-profile signer. */
@@ -107,6 +109,7 @@ export class PartnerTransport {
         const body = request.body ?? new Uint8Array();
         const headers = new Headers();
         headers.set('Accept-Encoding', 'identity');
+        headers.set('User-Agent', SDK_USER_AGENT);
         if (this.settings.acceptLanguage) headers.set('Accept-Language', this.settings.acceptLanguage);
         if (request.enrollmentToken !== undefined)
           headers.set('Authorization', `Enrollment ${request.enrollmentToken}`);
@@ -224,12 +227,14 @@ export class PartnerTransport {
           if (signedResponse)
             try {
               const requestSignatureInput = headers.get('Signature-Input');
+              const requestSignature = headers.get('Signature');
               await this.verifier.verify(
                 {
                   status: receivedResponse.status,
                   headers: mergedHeaders,
                   body: responseBody,
                   ...(requestSignatureInput === null ? {} : { requestSignatureInput }),
+                  ...(requestSignature === null ? {} : { requestSignature }),
                 },
                 { signal },
               );

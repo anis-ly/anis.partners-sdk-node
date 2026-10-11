@@ -39,7 +39,7 @@ describe('order local guards', () => {
     },
   );
 
-  it('refuses a negative thousandth price before making a request', async () => {
+  it('refuses a negative thousandth price before making a request', () => {
     let sent = false;
     const client = AnisPartnersClient.create({
       options: { authority: 'https://partners.example' },
@@ -50,14 +50,14 @@ describe('order local guards', () => {
       },
     });
 
-    await expect(
+    expect(() =>
       client.orders.create(uuid, uuid, {
         cardId: uuid,
         quantity: 1,
         expectedUnitPrice: price('-0.001'),
         expectedTotal: price('-0.001'),
       }),
-    ).rejects.toThrow('ExpectedUnitPrice must be greater than zero.');
+    ).toThrow('decimal string');
     expect(sent).toBe(false);
   });
 

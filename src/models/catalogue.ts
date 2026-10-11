@@ -6,6 +6,7 @@ import {
   optionalUuid,
   requiredUuid,
 } from './model-parsing.js';
+import { parseOptionalGroup, type CardGroupSummary } from './cards.js';
 import { parseMoney, type Money } from './money.js';
 
 /** Owner-supplied Arabic and English text; either translation can be absent. */
@@ -61,6 +62,8 @@ export interface CatalogueSubcategory {
 
 /** A purchasable card and the price this wallet pays for it. */
 export interface CatalogueCard {
+  /** Subcategory logo URL. */ logo?: string;
+  /** Parent category summary. */ category?: CardGroupSummary;
   /** Card UUID used in an order. */
   id: string;
   /** Parent subcategory UUID. */
@@ -81,9 +84,9 @@ export interface CatalogueCard {
   specialOfferPrice?: Money;
   /** Whether the card is live under current owner rules. */
   available: boolean;
-  /** Lowest quantity accepted in one order, when constrained. */
+  /** Minimum order quantity, always 1. */
   minimumQuantity?: number;
-  /** Highest quantity accepted in one order, when constrained. */
+  /** Platform order limit, 100. */
   maximumQuantity?: number;
 }
 
@@ -160,6 +163,8 @@ export function parseCatalogueCard(json: unknown): CatalogueCard {
   const object = asObject(json, 'CatalogueCard');
   const name = parseOptionalLocalized(object, 'name', 'CatalogueCard');
   const faceValue = optionalString(object, 'faceValue', 'CatalogueCard');
+  const logo = optionalString(object, 'logo', 'CatalogueCard');
+  const category = parseOptionalGroup(object, 'category');
   const unitPrice = parseOptionalMoney(object, 'unitPrice');
   const businessPrice = parseOptionalMoney(object, 'businessPrice');
   const personalPrice = parseOptionalMoney(object, 'personalPrice');
@@ -173,6 +178,8 @@ export function parseCatalogueCard(json: unknown): CatalogueCard {
     available: optionalBoolean(object, 'available', 'CatalogueCard') ?? false,
     ...(name === undefined ? {} : { name }),
     ...(faceValue === undefined ? {} : { faceValue }),
+    ...(logo === undefined ? {} : { logo }),
+    ...(category === undefined ? {} : { category }),
     ...(unitPrice === undefined ? {} : { unitPrice }),
     ...(businessPrice === undefined ? {} : { businessPrice }),
     ...(personalPrice === undefined ? {} : { personalPrice }),
@@ -206,7 +213,8 @@ function parseOptionalLocalized(
     return undefined;
   }
   try {
-    return parseLocalizedText(value);
+    const text = parseLocalizedText(value);
+    return Object.keys(text).length === 0 ? undefined : text;
   } catch (cause) {
     throw new TypeError(`${label}.${field} must contain Arabic or English text.`, { cause });
   }

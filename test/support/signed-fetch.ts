@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { PartnerJwk, SigningKeySet } from '../../src/verification/partner-jwk.js';
+import type { PublishedSigningKey, SigningKeySet } from '../../src/verification/partner-jwk.js';
 import { arrayBufferOf } from '../../src/internal/bytes.js';
 
 const keyId = '7a0d6c46-6a7e-4c7d-84f7-2d5c7c92f4b0';
@@ -15,7 +15,15 @@ export async function signedFetchDouble(
   const publicJwk = await globalThis.crypto.subtle.exportKey('jwk', pair.publicKey);
   if (publicJwk.x === undefined || publicJwk.y === undefined)
     throw new TypeError('Generated key omitted its coordinates.');
-  const jwk: PartnerJwk = { kty: 'EC', crv: 'P-256', x: publicJwk.x, y: publicJwk.y, kid: keyId };
+  const jwk: PublishedSigningKey = {
+    kty: 'EC',
+    crv: 'P-256',
+    x: publicJwk.x,
+    y: publicJwk.y,
+    kid: keyId,
+    status: 'active',
+    notBefore: '2026-01-01T00:00:00Z',
+  };
   const requests: { url: URL; init: RequestInit; body: Uint8Array }[] = [];
   const keySet: SigningKeySet = { keys: [jwk] };
   const fetcher: typeof globalThis.fetch = async (resource, init = {}) => {
@@ -32,9 +40,10 @@ export async function signedFetchDouble(
     headers.set('X-Request-Id', 'req-test-001');
     if (!headers.has('Cache-Control')) headers.set('Cache-Control', 'no-store');
     const requestSignatureInput = new Headers(init.headers).get('Signature-Input') ?? undefined;
-    const components = testResponseComponents(headers, status, requestSignatureInput);
+    const requestSignature = new Headers(init.headers).get('Signature') ?? undefined;
+    const components = testResponseComponents(headers, status, requestSignatureInput, requestSignature);
     const created = Math.floor(Date.now() / 1000);
-    const params = `(${components.map((part) => `"${part.name}"${part.requestBound ? ';req' : ''}`).join(' ')});created=${String(created)};keyid="${keyId}";alg="ecdsa-p256-sha256"`;
+    const params = `(${components.map((part) => `"${part.name}"${part.requestBound ? ';req' : ''}`).join(' ')});created=${String(created)};keyid="${keyId}";alg="ecdsa-p256-sha256";tag="anis-response-v2"`;
     const signature = new Uint8Array(
       await globalThis.crypto.subtle.sign(
         { name: 'ECDSA', hash: 'SHA-256' },
@@ -54,7 +63,12 @@ async function bytesOfBody(body: BodyInit | null | undefined): Promise<Uint8Arra
   return new Uint8Array(await new Response(body).arrayBuffer());
 }
 
-function testResponseComponents(headers: Headers, status: number, requestSignatureInput?: string) {
+function testResponseComponents(
+  headers: Headers,
+  status: number,
+  requestSignatureInput?: string,
+  requestSignature?: string,
+) {
   const components = [
     { name: '@status', value: String(status), requestBound: false },
     { name: 'content-digest', value: headers.get('Content-Digest') ?? '', requestBound: false },
@@ -62,6 +76,8 @@ function testResponseComponents(headers: Headers, status: number, requestSignatu
   ];
   if (requestSignatureInput !== undefined)
     components.push({ name: 'signature-input', value: requestSignatureInput, requestBound: true });
+  if (requestSignature !== undefined)
+    components.push({ name: 'signature', value: requestSignature, requestBound: true });
   for (const name of ['Location', 'Retry-After', 'Idempotency-Replayed', 'Cache-Control']) {
     const value = headers.get(name);
     if (value !== null) components.push({ name: name.toLowerCase(), value, requestBound: false });

@@ -10,8 +10,10 @@ The `@anis-ly/partners` package calls the Anis Partner API with signed requests,
 > https://developers.anis.ly.
 
 ```bash
-npm install @anis-ly/partners
+npm install @anis-ly/partners@2
 ```
+
+Version 2.0.0 uses the `anis-response-v2` verification profile. 1.x is deprecated — upgrade.
 
 ## Quick start
 
@@ -34,6 +36,8 @@ console.log(profile.application?.scopes);
 const [walletId, subcategoryId] = [setting('WALLET_ID'), setting('SUBCATEGORY_ID')];
 const card = await first(client.catalogue.listCards(walletId, subcategoryId));
 if (!card?.unitPrice) throw new Error('No price is available for this wallet.');
+const catalogueCard = await client.catalogue.getCard(walletId, card.id);
+console.log(catalogueCard.category?.name, catalogueCard.logo);
 const operationId = crypto.randomUUID();
 const quantity = 1;
 const request = {
@@ -71,18 +75,18 @@ CommonJS users can load the package with: `const { AnisPartnersClient } = requir
 - `OrderResult` is a discriminated union. Credentials appear only on `completed`; a `replayed` result is state only.
 - Credential objects and completed order results contain secret fields. `JSON.stringify` includes voucher and serial values; do not log or serialize them casually. Persist released credentials in a secret store with owner-only permissions.
 - A refusal that may follow an earlier attempt is `unknown`; a final business refusal is `notPlaced`.
-- Every request is signed. Every answer that moves money, delivers card codes or establishes a key — orders, order reads, card and invoice reveals, enrollment, and the signature self-test — is verified before the SDK returns or parses it, success and refusal alike; one that arrives unsigned or fails verification is discarded, and an unverifiable order has an unknown outcome. Profile, wallet, catalogue and owned-card reads are information answers that Anis does not sign; the SDK reads them as received over HTTPS. Which routes are signed is fixed per route in the SDK, never guessed from the answer.
+- Every request is signed. Every answer that moves money, delivers card codes or establishes a key — access stops, orders, order reads, card and invoice reveals, enrollment, and the signature self-test — is verified before the SDK returns or parses it, success and refusal alike; one that arrives unsigned or fails verification is discarded, and an unverifiable order has an unknown outcome. Profile, wallet, catalogue and owned-card reads are information answers that Anis does not sign; the SDK reads them as received over HTTPS. Which routes are signed is fixed per route in the SDK, never guessed from the answer.
 - Logging and telemetry are opt-in listeners and omit signatures, signature bases, nonces, enrollment tokens, and credentials.
 
 ## What is covered
 
-All 19 published API routes are grouped under `profile`, `wallets`, `catalogue`, `orders`, `ownedCards`, and `diagnostics`, with `AnisEnrollmentClient` for enrollment. Lists can be consumed page by page with `listPage({ cursor, signal })` or walked as an `AsyncIterable` with `list()`.
+All 22 published API routes are grouped under `access`, `profile`, `wallets`, `catalogue`, `orders`, `ownedCards`, and `diagnostics`, with `AnisEnrollmentClient` for enrollment. Lists can be consumed page by page with `listPage({ cursor, signal })` or walked as an `AsyncIterable` with `list()`.
 
 ## How it is proven
 
-The tests include 9 request vectors, 39 response vectors, 2 enrollment proof vectors, and 4 safety-code vector files; in-memory client and transport tests; and contract drift checks against the checked-in route, response-signing and error contracts. `npm run check` runs formatting, strict type checks, lint, tests, and a package build.
+The tests include the checked-in request, response, enrollment proof, and safety-code vectors; in-memory client and transport tests; and contract drift checks against the checked-in route, response-signing and error contracts. `npm run check` runs formatting, strict type checks, lint, tests, and a package build.
 
-Verified end to end against a live Anis environment (October 2026).
+The 2.0.0 response conformance vectors are regenerated alongside the gateway contract.
 
 ## Supported Node versions
 
@@ -95,3 +99,9 @@ npm run generate:errors
 ## License
 
 [MIT](LICENSE) © 2026 Aniscom for Technical Services (Anis).
+
+## Access and card models
+
+Use `client.access.suspendApplication(reason)` to suspend this application and `client.access.revokeKey(keyId, reason)` to revoke one of its keys. These signed stop calls require a trimmed reason of 1–500 characters and no scope. Resume requires Anis staff; revocation is irreversible.
+
+`client.ownedCards.list()`, `get()`, `reveal()`, and `revealInvoice()` use `/owned-cards` paths. A masked card has `soldCardId` and `operationId`; its `card: CardSummary` contains the name, face value, logo, subcategory, and category. Reveals and order `soldCards[]` share the full `RevealedCredential` shape. Wallet currency is `wallet.balance.currency`. Money amounts on the wire are non-negative strings with exactly three decimal places and uppercase three-letter currency codes. Catalogue quantity bounds are 1 and the platform limit of 100.

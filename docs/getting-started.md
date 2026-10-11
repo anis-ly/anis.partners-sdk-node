@@ -88,7 +88,7 @@ console.log(profile.application?.scopes); // permissions effective for this call
 
 Permissions are evaluated on each request. Read the profile when you need to understand current access instead of assuming a permission remains unchanged.
 
-The request is signed like every call, but the profile is an information read: Anis answers it, like the wallet, catalogue and owned-card reads, without a response signature, so the SDK reads it as received over HTTPS. Answers that move money, deliver card codes or establish a key — orders, order reads, reveals, enrollment and the signature self-test — are signed, and the SDK refuses any of them that does not verify. See [security](security.md#response-verification-is-mandatory-on-signed-routes).
+The request is signed like every call, but the profile is an information read: Anis answers it, like the wallet, catalogue and owned-card reads, without a response signature, so the SDK reads it as received over HTTPS. Answers that move money, deliver card codes or establish a key — access stops, orders, order reads, reveals, enrollment and the signature self-test — are signed, and the SDK refuses any of them that does not verify. See [security](security.md#response-verification-is-mandatory-on-signed-routes).
 
 For each new order, generate a fresh UUID v4 with `crypto.randomUUID()`. Persist that id and the exact request before calling `orders.create`; reuse both only when recovering that purchase.
 

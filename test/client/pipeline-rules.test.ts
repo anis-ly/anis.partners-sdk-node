@@ -29,7 +29,7 @@ const create = async (
 describe('signed request pipeline rules', () => {
   it('keeps safe reads free of mutation headers and a body digest', async () => {
     const fake = await signedFetchDouble(() => ({
-      body: `{"id":"${uuid}","balance":{"amount":"1","currency":"LYD"}}`,
+      body: `{"id":"${uuid}","balance":{"amount":"1.000","currency":"LYD"}}`,
     }));
 
     await (await create(fake.fetcher)).wallets.get(uuid);

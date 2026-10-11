@@ -5,6 +5,7 @@ import {
   parseCatalogueSubcategory,
 } from '../../src/models/catalogue.js';
 import { parseMaskedCard, parseRevealedCredential } from '../../src/models/cards.js';
+import { parseWallet } from '../../src/models/wallets.js';
 import { parseOrder, parseOrderStatus } from '../../src/models/orders.js';
 
 const subcategoryId = '7a1c3e5f-2b4d-4f68-8a0c-9e1b3d5f7a2c';
@@ -39,10 +40,10 @@ describe('model field compatibility', () => {
   });
 
   it('reads catalogue card quantity limits', () => {
-    const card = parseCatalogueCard({ id: cardId, minimumQuantity: 2, maximumQuantity: 50 });
+    const card = parseCatalogueCard({ id: cardId, minimumQuantity: 1, maximumQuantity: 100 });
 
-    expect(card.minimumQuantity).toBe(2);
-    expect(card.maximumQuantity).toBe(50);
+    expect(card.minimumQuantity).toBe(1);
+    expect(card.maximumQuantity).toBe(100);
   });
 
   it('leaves omitted catalogue card quantity limits absent', () => {
@@ -112,32 +113,81 @@ describe('model field compatibility', () => {
 
   it('reads masked card price, expiry, invoice, face value, and subcategory', () => {
     const card = parseMaskedCard({
-      id: soldCardId,
+      soldCardId,
       credentialAvailable: false,
       unitPrice: { amount: '10.500', currency: 'LYD' },
       expiryDate: '2027-03-31',
       invoiceNumber: 1042,
-      faceValue: '10 USD',
-      subcategory: { id: subcategoryId, name: { ar: 'فئة', en: 'Games' } },
+      card: { id: cardId, faceValue: '10 USD', subcategory: { id: subcategoryId, name: { ar: 'فئة', en: 'Games' } } },
     });
 
     expect(card.unitPrice?.amount).toBe('10.500');
     expect(card.unitPrice?.currency).toBe('LYD');
     expect(card.expiryDate).toBe('2027-03-31');
     expect(card.invoiceNumber).toBe(1042);
-    expect(card.faceValue).toBe('10 USD');
-    expect(card.subcategory?.id).toBe(subcategoryId);
-    expect(card.subcategory?.name?.en).toBe('Games');
+    expect(card.card?.faceValue).toBe('10 USD');
+    expect(card.card?.subcategory?.id).toBe(subcategoryId);
+    expect(card.card?.subcategory?.name?.en).toBe('Games');
     expect(card.credentialAvailable).toBe(false);
   });
 
   it('leaves omitted masked card additions absent', () => {
-    const card = parseMaskedCard({ id: soldCardId, credentialAvailable: true });
+    const card = parseMaskedCard({ soldCardId, credentialAvailable: true });
 
     expect(card.unitPrice).toBeUndefined();
     expect(card.expiryDate).toBeUndefined();
     expect(card.invoiceNumber).toBeUndefined();
-    expect(card.faceValue).toBeUndefined();
-    expect(card.subcategory).toBeUndefined();
+    expect(card.card?.faceValue).toBeUndefined();
+    expect(card.card?.subcategory).toBeUndefined();
+  });
+});
+
+describe('v2 shared card shapes', () => {
+  it('uses only balance currency on wallets', () => {
+    const wallet = parseWallet({ id: cardId, currency: 'USD', balance: { amount: '10.000', currency: 'LYD' } });
+    expect(wallet).not.toHaveProperty('currency');
+    expect(wallet.balance.currency).toBe('LYD');
+  });
+  const summary = {
+    id: cardId,
+    name: { en: 'Card', ar: '' },
+    faceValue: '10 USD',
+    logo: 'https://assets.example/card.png',
+    subcategory: { id: subcategoryId, name: { en: 'Games' } },
+    category: { id: subcategoryId, name: { en: 'Digital' } },
+  };
+  it('shares the full summary between masked cards, reveals, and order credentials', () => {
+    const masked = parseMaskedCard({ soldCardId, operationId, card: summary });
+    const revealed = parseRevealedCredential({
+      soldCardId,
+      card: summary,
+      invoiceId: operationId,
+      purchasedAt: '2026-10-11T09:00:00Z',
+    });
+    const order = parseOrder({
+      operationId,
+      status: 'completed',
+      soldCards: [{ soldCardId, card: summary, invoiceId: operationId, purchasedAt: '2026-10-11T09:00:00Z' }],
+    });
+    expect(masked.operationId).toBe(operationId);
+    expect(masked).not.toHaveProperty('id');
+    expect(masked).not.toHaveProperty('orderOperationId');
+    expect(masked.card).toEqual({ ...summary, name: { en: 'Card' } });
+    expect(revealed.card).toEqual(masked.card);
+    expect(order.soldCards?.[0]?.card).toEqual(masked.card);
+    expect(order.soldCards?.[0]?.invoiceId).toBe(operationId);
+    expect(order.soldCards?.[0]?.purchasedAt).toEqual(revealed.purchasedAt);
+  });
+  it('omits empty strings and empty localized text', () => {
+    const card = parseCatalogueCard({ id: cardId, logo: '', faceValue: '', name: { ar: '', en: '' } });
+    expect(card).not.toHaveProperty('logo');
+    expect(card).not.toHaveProperty('faceValue');
+    expect(card).not.toHaveProperty('name');
+    expect(parseRevealedCredential({ soldCardId, card: { id: cardId, name: {} } }).card).not.toHaveProperty('name');
+  });
+  it('reads descriptions on subcategory list items', () => {
+    expect(parseCatalogueSubcategory({ id: subcategoryId, description: { en: 'Digital cards' } }).description).toEqual({
+      en: 'Digital cards',
+    });
   });
 });

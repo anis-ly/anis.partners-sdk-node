@@ -3,7 +3,7 @@ import { decodeBase64Url } from '../internal/base64url.js';
 import { arrayBufferOf, fixedTimeEqual } from '../internal/bytes.js';
 import type { Clock } from '../internal/clock.js';
 import { systemClock } from '../internal/clock.js';
-import type { SigningKeySet, PartnerJwk } from './partner-jwk.js';
+import type { SigningKeySet, PublishedSigningKey } from './partner-jwk.js';
 import type { SigningKeyRequestOptions, SigningKeySource } from './signing-key-source.js';
 import { parseSignatureInput } from './signature-input-parser.js';
 import { PartnerResponseSignatureBase } from './partner-response-signature-base.js';
@@ -38,6 +38,9 @@ export class PartnerResponseVerifier {
       fail('label_unexpected', 'The label is frozen at sig1 on both headers.');
     if (parsed.algorithm !== undefined && parsed.algorithm !== 'ecdsa-p256-sha256')
       fail('algorithm_not_supported', 'There is no alternate algorithm to negotiate.');
+    if (parsed.tag !== 'anis-response-v2') fail('profile_unexpected', 'The response must use anis-response-v2.');
+    if (Boolean(response.requestSignatureInput) !== Boolean(response.requestSignature))
+      fail('covered_components_mismatch', 'Both raw request signature headers are required for request binding.');
     const digest = header(response, 'Content-Digest');
     if (
       !digest ||
@@ -54,6 +57,7 @@ export class PartnerResponseVerifier {
       digest,
       requestId,
       response.requestSignatureInput,
+      response.requestSignature,
       header(response, 'Location'),
       header(response, 'Retry-After'),
       header(response, 'Idempotency-Replayed'),
@@ -69,6 +73,8 @@ export class PartnerResponseVerifier {
       fail('created_out_of_window', `created is ${String(age)}s from this clock.`);
 
     let document = await this.keys.get(options);
+    if (document.revoked?.some((entry) => entry.kid === parsed.keyId))
+      fail('key_compromised', 'The response key is compromised.');
     let key = resolve(document, parsed.keyId);
     if (!key) {
       safeLog(this.logger, 'warn', 'Anis response used an unpublished signing key', {
@@ -76,11 +82,24 @@ export class PartnerResponseVerifier {
         eventId: 1006,
       });
       document = await this.keys.refresh(options);
+      if (document.revoked?.some((entry) => entry.kid === parsed.keyId))
+        fail('key_compromised', 'The response key is compromised.');
       key = resolve(document, parsed.keyId);
     }
     if (document.keys.some((candidate) => candidate.d !== undefined && candidate.d !== ''))
       fail('key_rejected', 'The published key document carries a private member.');
     if (!key) fail('unknown_key', `keyid ${parsed.keyId} is not published.`);
+    if (key.status !== 'active' && key.status !== 'next' && key.status !== 'retired')
+      fail('key_rejected', 'The published key has no supported lifecycle status.');
+    const notBefore = Date.parse(key.notBefore ?? '');
+    if (!Number.isFinite(notBefore)) fail('key_rejected', 'The published key has no valid notBefore instant.');
+    const retiredAt = Date.parse(key.retiredAt ?? '');
+    if (key.status === 'retired' && !Number.isFinite(retiredAt))
+      fail('key_rejected', 'The retired key has no valid retiredAt instant.');
+    if (key.status === 'retired' && parsed.created * 1000 > retiredAt)
+      fail('key_retired', 'The signature was created after the key retired.');
+    if (key.status === 'next' && parsed.created * 1000 < notBefore)
+      fail('key_not_yet_valid', 'The signature predates the next key activation.');
     const signatureBytes = byteSequence(signature);
     if (signatureBytes?.length !== 64) fail('signature_malformed', 'P-256 P1363 signatures must be exactly 64 bytes.');
     const x = decodeBase64Url(key.x);
@@ -125,7 +144,7 @@ function header(response: VerifiableResponse, name: string): string | undefined 
     if (key.toLowerCase() === name.toLowerCase()) return response.headers[key];
   return undefined;
 }
-function resolve(document: SigningKeySet, keyId: string): PartnerJwk | undefined {
+function resolve(document: SigningKeySet, keyId: string): PublishedSigningKey | undefined {
   return document.keys.find((key) => key.kid === keyId && key.x && key.y);
 }
 function byteSequence(value: string): Uint8Array | undefined {

@@ -47,6 +47,7 @@ const decisions: Record<string, { error: ErrorConstructor; outcome: OrderRefusal
   invalid_credentials: { error: InvalidCredentialsError, outcome: 'unknown' },
   invitation_invalid: { error: EnrollmentRefusedError, outcome: 'notPlaced' },
   invoice_reveal_limit_exceeded: { error: AnisApiError, outcome: 'notPlaced' },
+  key_not_revocable: { error: AnisApiError, outcome: 'notPlaced' },
   key_duplicate: { error: EnrollmentRefusedError, outcome: 'notPlaced' },
   key_proof_invalid: { error: EnrollmentRefusedError, outcome: 'notPlaced' },
   malformed_signed_request: { error: AnisApiError, outcome: 'unknown' },

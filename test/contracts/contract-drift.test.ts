@@ -90,10 +90,12 @@ describe('contract drift', () => {
 
     expect(signed.sort()).toEqual(
       [
+        'POST /v1/application/suspend',
+        'POST /v1/keys/{keyId}/revoke',
         'POST /v1/wallets/{walletId}/orders',
         'GET /v1/orders/{operationId}',
-        'POST /v1/wallets/{walletId}/cards/{soldCardId}/reveal',
-        'POST /v1/wallets/{walletId}/invoices/{invoiceId}/cards/reveal',
+        'POST /v1/wallets/{walletId}/owned-cards/{soldCardId}/reveal',
+        'POST /v1/wallets/{walletId}/invoices/{invoiceId}/owned-cards/reveal',
         'GET /v1/enrollments/{invitationId}',
         'POST /v1/enrollments/{invitationId}/keys',
         'POST /v1/enrollments/{invitationId}/proof',
@@ -103,6 +105,7 @@ describe('contract drift', () => {
     );
     expect(unsigned.sort()).toEqual(
       [
+        'GET /v1/wallets/{walletId}/catalog/cards/{cardId}',
         'GET /v1/profile',
         'GET /v1/wallets',
         'GET /v1/wallets/{walletId}',
@@ -110,8 +113,8 @@ describe('contract drift', () => {
         'GET /v1/wallets/{walletId}/catalog/categories/{categoryId}/subcategories',
         'GET /v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}',
         'GET /v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}/cards',
-        'GET /v1/wallets/{walletId}/cards',
-        'GET /v1/wallets/{walletId}/cards/{soldCardId}',
+        'GET /v1/wallets/{walletId}/owned-cards',
+        'GET /v1/wallets/{walletId}/owned-cards/{soldCardId}',
         'GET /.well-known/partner-signing-keys.json',
       ].sort(),
     );

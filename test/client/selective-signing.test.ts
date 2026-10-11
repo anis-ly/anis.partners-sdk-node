@@ -29,18 +29,18 @@ const unsignedReads: { route: string; profile?: SignatureProfile }[] = [
   { route: '/v1/wallets/{walletId}/catalog/categories/{categoryId}/subcategories', profile: 'SafeRead' },
   { route: '/v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}', profile: 'SafeRead' },
   { route: '/v1/wallets/{walletId}/catalog/subcategories/{subcategoryId}/cards', profile: 'SafeRead' },
-  { route: '/v1/wallets/{walletId}/cards', profile: 'SafeRead' },
-  { route: '/v1/wallets/{walletId}/cards/{soldCardId}', profile: 'SafeRead' },
+  { route: '/v1/wallets/{walletId}/owned-cards', profile: 'SafeRead' },
+  { route: '/v1/wallets/{walletId}/owned-cards/{soldCardId}', profile: 'SafeRead' },
 ];
 
 /** The routes whose every answer, success and refusal, Anis signs. */
 const signedRoutes: { method: string; route: string; profile?: SignatureProfile }[] = [
   { method: 'POST', route: '/v1/wallets/{walletId}/orders', profile: 'OrderMutation' },
   { method: 'GET', route: '/v1/orders/{operationId}', profile: 'SafeRead' },
-  { method: 'POST', route: '/v1/wallets/{walletId}/cards/{soldCardId}/reveal', profile: 'BodylessNonceMutation' },
+  { method: 'POST', route: '/v1/wallets/{walletId}/owned-cards/{soldCardId}/reveal', profile: 'BodylessNonceMutation' },
   {
     method: 'POST',
-    route: '/v1/wallets/{walletId}/invoices/{invoiceId}/cards/reveal',
+    route: '/v1/wallets/{walletId}/invoices/{invoiceId}/owned-cards/reveal',
     profile: 'BodylessNonceMutation',
   },
   { method: 'GET', route: '/v1/enrollments/{invitationId}' },
@@ -137,7 +137,10 @@ describe('selective response signing', () => {
       if (path === '/v1/wallets') return { body: `{"items":[${wallet}]}` };
       if (path === `/v1/wallets/${uuid}`) return { body: wallet };
       if (path.endsWith(`/catalog/subcategories/${uuid}`)) return { body: item };
-      if (path === `/v1/wallets/${uuid}/cards/${uuid}`) return { body: item };
+      if (path.startsWith(`/v1/wallets/${uuid}/owned-cards`))
+        return {
+          body: path.endsWith('/owned-cards') ? `{"items":[{"soldCardId":"${uuid}"}]}` : `{"soldCardId":"${uuid}"}`,
+        };
       return { body: `{"items":[${item}]}` };
     });
     const api = client(fake.fetcher);
@@ -149,8 +152,8 @@ describe('selective response signing', () => {
     expect((await api.catalogue.listSubcategoriesPage(uuid, uuid)).items[0]?.id).toBe(uuid);
     expect((await api.catalogue.getSubcategory(uuid, uuid)).id).toBe(uuid);
     expect((await api.catalogue.listCardsPage(uuid, uuid)).items[0]?.id).toBe(uuid);
-    expect((await api.ownedCards.listPage(uuid)).items[0]?.id).toBe(uuid);
-    expect((await api.ownedCards.get(uuid, uuid)).id).toBe(uuid);
+    expect((await api.ownedCards.listPage(uuid)).items[0]?.soldCardId).toBe(uuid);
+    expect((await api.ownedCards.get(uuid, uuid)).soldCardId).toBe(uuid);
 
     expect(fake.paths).toHaveLength(9);
     expect(fake.paths).not.toContain(keyDocument);

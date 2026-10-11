@@ -72,7 +72,7 @@ describe('AnisPartnersClient transport', () => {
 
   it('adds the caller language preference to requests', async () => {
     const fake = await signedFetchDouble(() => ({
-      body: `{"id":"${walletId}","balance":{"amount":"1","currency":"LYD"}}`,
+      body: `{"id":"${walletId}","balance":{"amount":"1.000","currency":"LYD"}}`,
     }));
     const client = AnisPartnersClient.create({
       options: { authority, acceptLanguage: 'ar' },
@@ -87,10 +87,10 @@ describe('AnisPartnersClient transport', () => {
 
   it('keeps explicit clients on their own signing key and authority', async () => {
     const first = await signedFetchDouble(() => ({
-      body: `{"id":"${walletId}","balance":{"amount":"1","currency":"LYD"}}`,
+      body: `{"id":"${walletId}","balance":{"amount":"1.000","currency":"LYD"}}`,
     }));
     const second = await signedFetchDouble(() => ({
-      body: `{"id":"${walletId}","balance":{"amount":"2","currency":"LYD"}}`,
+      body: `{"id":"${walletId}","balance":{"amount":"2.000","currency":"LYD"}}`,
     }));
     const firstId = 'a9cb2df1-5a48-449b-8c8a-1b20a5b7f433';
     const secondId = '9b2e4f17-3c6a-4d58-b0e1-7a5c8d2f6b34';
@@ -160,7 +160,7 @@ describe('AnisPartnersClient transport', () => {
       const id = calls === 1 ? '11111111-1111-4111-8111-111111111111' : '22222222-2222-4222-8222-222222222222';
       return {
         body: JSON.stringify({
-          items: [{ id, name: String(calls), balance: { amount: '1', currency: 'LYD' } }],
+          items: [{ id, name: String(calls), balance: { amount: '1.000', currency: 'LYD' } }],
           ...(calls === 1 ? { nextCursor: 'next-1' } : {}),
         }),
       };

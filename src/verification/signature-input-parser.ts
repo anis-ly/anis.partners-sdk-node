@@ -10,6 +10,8 @@ export interface ParsedSignatureInput {
   keyId: string;
   /** Optional algorithm; when present it must match the supported one. */
   algorithm?: string;
+  /** Required response profile discriminator. */
+  tag?: string;
 }
 
 /** Strictly parses the single signature form emitted by Anis; accepting ambiguity would let a response choose its verifier. */
@@ -43,12 +45,16 @@ export function parseSignatureInput(value: string): ParsedSignatureInput | undef
   let created: number | undefined;
   let keyId: string | undefined;
   let algorithm: string | undefined;
+  let tag: string | undefined;
+  const parameters = new Set<string>();
   while (index < value.length) {
     if (value[index] !== ';') return undefined;
     const start = index + 1;
     const eq = value.indexOf('=', start);
     if (eq < 0) return undefined;
     const name = value.slice(start, eq);
+    if (parameters.has(name)) return undefined;
+    parameters.add(name);
     index = eq + 1;
     if (value[index] === '"') {
       const end = value.indexOf('"', index + 1);
@@ -57,6 +63,7 @@ export function parseSignatureInput(value: string): ParsedSignatureInput | undef
       index = end + 1;
       if (name === 'keyid') keyId = text;
       else if (name === 'alg') algorithm = text;
+      else if (name === 'tag') tag = text;
     } else {
       let end = index;
       while (end < value.length && value[end] !== ';') end++;
@@ -71,5 +78,12 @@ export function parseSignatureInput(value: string): ParsedSignatureInput | undef
     }
   }
   if (created === undefined || keyId === undefined) return undefined;
-  return { label, identifiers, created, keyId, ...(algorithm === undefined ? {} : { algorithm }) };
+  return {
+    label,
+    identifiers,
+    created,
+    keyId,
+    ...(algorithm === undefined ? {} : { algorithm }),
+    ...(tag === undefined ? {} : { tag }),
+  };
 }

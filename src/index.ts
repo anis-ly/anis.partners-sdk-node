@@ -56,13 +56,13 @@ export type {
 } from './models/catalogue.js';
 export type {
   MaskedCard,
-  MaskedCardProduct,
-  MaskedCardSubcategory,
+  CardSummary,
+  CardGroupSummary,
   RevealedCredential,
   RevealedCredentialCollection,
 } from './models/cards.js';
 export type { CreateOrderRequest, Order, OrderStatus } from './models/orders.js';
-export type { PartnerJwk } from './verification/partner-jwk.js';
+export type { PartnerJwk, PublishedSigningKey, SigningKeySet, RevokedSigningKey } from './verification/partner-jwk.js';
 export type {
   OrderCompleted,
   OrderNotPlaced,
@@ -77,8 +77,9 @@ export { validateClientOptions } from './client-options.js';
 export { AnisPartnersClient } from './client.js';
 export type { AnisPartnersClientCreateOptions } from './client.js';
 export type { KeyDocumentCache } from './verification/http-signing-key-source.js';
-export type { CallOptions, PageOptions } from './operations/operations.js';
+export type { CallOptions, PageOptions, ApplicationSuspended, KeyRevoked } from './operations/operations.js';
 export {
+  AccessOperations,
   CatalogueOperations,
   DiagnosticsOperations,
   OrderOperations,

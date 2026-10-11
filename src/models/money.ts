@@ -37,21 +37,20 @@ export class Money {
     if (typeof amount !== 'string') {
       throw new TypeError('Money amounts must be decimal strings.');
     }
-    if (typeof currency !== 'string' || currency.length === 0) {
+    if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) {
       throw new TypeError('A currency code is required.');
     }
-    const match = /^(-?)(0|[1-9]\d*)(?:\.(\d+))?$/.exec(amount);
+    const match = /^(\d+)(?:\.(\d+))?$/.exec(amount);
     if (match === null) {
       throw new TypeError('A money amount must be a decimal string.');
     }
-    const sign = match[1] === '-' ? -1n : 1n;
-    const whole = BigInt(match[2] ?? '0');
-    const fraction = match[3] ?? '';
+    const whole = BigInt(match[1] ?? '0');
+    const fraction = match[2] ?? '';
     if (fraction.length > 3) {
       throw new TypeError('Anis amounts have at most three decimal places');
     }
     const thousandths = whole * 1000n + BigInt((fraction + '000').slice(0, 3));
-    return new Money(sign * thousandths, currency, asOf);
+    return new Money(thousandths, currency, asOf);
   }
 
   /** The amount rendered with exactly three decimal places so Anis receives the contract's decimal-string form. */
@@ -69,7 +68,7 @@ export class Money {
    * @remarks The source instant describes the unit quote, not the computed order total, so it is cleared on the result.
    */
   multiply(quantity: number): Money {
-    if (!Number.isSafeInteger(quantity)) {
+    if (!Number.isSafeInteger(quantity) || quantity < 0) {
       throw new TypeError('Money can only be multiplied by a safe whole number.');
     }
     return new Money(this.#thousandths * BigInt(quantity), this.currency);
@@ -98,6 +97,8 @@ export class Money {
 export function parseMoney(json: unknown): Money {
   const object = asObject(json, 'Money');
   const amount = requiredString(object, 'amount', 'Money');
+  if (!/^\d+\.\d{3}$/.test(amount))
+    throw new TypeError('Money.amount must be non-negative with exactly three decimal places.');
   const currency = requiredString(object, 'currency', 'Money');
   const asOf = optionalTimestamp(object, 'asOf', 'Money');
   return Money.of(amount, currency, asOf);

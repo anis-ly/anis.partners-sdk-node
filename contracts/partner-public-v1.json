@@ -78,38 +78,6 @@
         }
       }
     },
-    "/v1/wallets/{walletId}/cards": {
-      "get": {
-        "x-anis-route": {
-          "requestKind": "safeRead",
-          "signedResponse": false
-        }
-      }
-    },
-    "/v1/wallets/{walletId}/cards/{soldCardId}": {
-      "get": {
-        "x-anis-route": {
-          "requestKind": "safeRead",
-          "signedResponse": false
-        }
-      }
-    },
-    "/v1/wallets/{walletId}/cards/{soldCardId}/reveal": {
-      "post": {
-        "x-anis-route": {
-          "requestKind": "bodylessNonceMutation",
-          "signedResponse": true
-        }
-      }
-    },
-    "/v1/wallets/{walletId}/invoices/{invoiceId}/cards/reveal": {
-      "post": {
-        "x-anis-route": {
-          "requestKind": "bodylessNonceMutation",
-          "signedResponse": true
-        }
-      }
-    },
     "/v1/diagnostics/signature": {
       "post": {
         "x-anis-route": {
@@ -154,6 +122,62 @@
       "get": {
         "x-anis-route": {
           "requestKind": "public",
+          "signedResponse": false
+        }
+      }
+    },
+    "/v1/wallets/{walletId}/owned-cards": {
+      "get": {
+        "x-anis-route": {
+          "requestKind": "safeRead",
+          "signedResponse": false
+        }
+      }
+    },
+    "/v1/wallets/{walletId}/owned-cards/{soldCardId}": {
+      "get": {
+        "x-anis-route": {
+          "requestKind": "safeRead",
+          "signedResponse": false
+        }
+      }
+    },
+    "/v1/wallets/{walletId}/owned-cards/{soldCardId}/reveal": {
+      "post": {
+        "x-anis-route": {
+          "requestKind": "bodylessNonceMutation",
+          "signedResponse": true
+        }
+      }
+    },
+    "/v1/wallets/{walletId}/invoices/{invoiceId}/owned-cards/reveal": {
+      "post": {
+        "x-anis-route": {
+          "requestKind": "bodylessNonceMutation",
+          "signedResponse": true
+        }
+      }
+    },
+    "/v1/application/suspend": {
+      "post": {
+        "x-anis-route": {
+          "requestKind": "bodylessNonceMutation",
+          "signedResponse": true
+        }
+      }
+    },
+    "/v1/keys/{keyId}/revoke": {
+      "post": {
+        "x-anis-route": {
+          "requestKind": "bodylessNonceMutation",
+          "signedResponse": true
+        }
+      }
+    },
+    "/v1/wallets/{walletId}/catalog/cards/{cardId}": {
+      "get": {
+        "x-anis-route": {
+          "requestKind": "safeRead",
           "signedResponse": false
         }
       }
