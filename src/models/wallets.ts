@@ -12,8 +12,6 @@ export interface Wallet {
   id: string;
   /** Display name when the owner supplied one. */
   name?: string;
-  /** Currency code used by its balances and orders. */
-  currency?: string;
   /** Reserved-adjusted balance and the instant at which it was computed. */
   balance: Money;
 }
@@ -66,12 +64,10 @@ export interface OwnerAccount {
 export function parseWallet(json: unknown): Wallet {
   const object = asObject(json, 'Wallet');
   const name = optionalString(object, 'name', 'Wallet');
-  const currency = optionalString(object, 'currency', 'Wallet');
   return {
     id: requiredUuid(object, 'id', 'Wallet'),
     balance: parseMoney(object.balance),
     ...(name === undefined ? {} : { name }),
-    ...(currency === undefined ? {} : { currency }),
   };
 }
 

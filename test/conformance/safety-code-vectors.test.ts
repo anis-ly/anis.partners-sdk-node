@@ -19,8 +19,8 @@ const manifest = JSON.parse(readFileSync('test/vectors/safety-code/manifest.json
 };
 
 describe('safety-code vectors', () => {
-  it('contains all four safety-code vectors', () => {
-    expect(files).toHaveLength(4);
+  it('contains all manifest-declared safety-code vectors', () => {
+    expect(files).toHaveLength(manifest.vectors.length);
     expect(manifest.total).toBe(files.length);
     expect(manifest.vectors.map((vector) => vector.id)).toEqual(files.map(vectorId));
   });

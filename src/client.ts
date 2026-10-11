@@ -8,6 +8,7 @@ import { HttpSigningKeySource } from './verification/http-signing-key-source.js'
 import type { PartnerLogger } from './observability/logger.js';
 import { PartnerTransport } from './operations/partner-transport.js';
 import {
+  AccessOperations,
   CatalogueOperations,
   DiagnosticsOperations,
   OrderOperations,
@@ -38,6 +39,8 @@ export interface AnisPartnersClientCreateOptions {
  * owned-card reads are information reads that Anis answers unsigned, so they are parsed as received over HTTPS.
  */
 export class AnisPartnersClient {
+  /** Suspends application access and revokes its keys. */
+  readonly access: AccessOperations;
   /** Reads identity and live scopes. */
   readonly profile: ProfileOperations;
   /** Lists wallets available to this application. */
@@ -52,6 +55,7 @@ export class AnisPartnersClient {
   readonly diagnostics: DiagnosticsOperations;
 
   private constructor(transport: PartnerTransport) {
+    this.access = new AccessOperations(transport);
     this.profile = new ProfileOperations(transport);
     this.wallets = new WalletOperations(transport);
     this.catalogue = new CatalogueOperations(transport);

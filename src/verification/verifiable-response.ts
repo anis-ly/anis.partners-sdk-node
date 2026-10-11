@@ -13,4 +13,6 @@ export interface VerifiableResponse {
   body: Uint8Array;
   /** Signature-Input sent on this request, when signed; the server's copy is not trusted as the client's request. */
   requestSignatureInput?: string;
+  /** Raw Signature header sent on this request, bound exactly as transmitted. */
+  requestSignature?: string;
 }

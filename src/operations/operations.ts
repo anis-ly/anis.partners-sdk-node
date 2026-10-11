@@ -1,3 +1,4 @@
+import { asObject, requiredUuid, requiredString, optionalTimestamp } from '../models/model-parsing.js';
 import type { CatalogueCard, CatalogueCategory, CatalogueSubcategory, Page } from '../models/catalogue.js';
 import {
   parseCatalogueCard,
@@ -36,6 +37,74 @@ export interface CallOptions {
 export interface PageOptions extends CallOptions {
   /** Cursor returned by the preceding page; omit it to read the first page. */
   cursor?: string | undefined;
+}
+
+/** Signed confirmation that the application's access is suspended. */
+export interface ApplicationSuspended {
+  /** Admitted application identity. */ applicationId: string;
+  /** Terminal answer state for this call. */ status: 'suspended';
+  /** Suspension instant. */ suspendedAt: Date;
+}
+/** Signed confirmation that a credential key is revoked. */
+export interface KeyRevoked {
+  /** Revoked credential identity. */ keyId: string;
+  /** Irreversible credential state. */ status: 'revoked';
+  /** Revocation instant. */ revokedAt: Date;
+}
+/** Stops access for the admitted application without requiring a scope. */
+export class AccessOperations {
+  /** Shares the signed and verified client transport. */
+  constructor(private readonly transport: PartnerTransport) {}
+  /** Suspends this application; staff assistance is required to resume. */
+  async suspendApplication(reason: string, options?: CallOptions): Promise<ApplicationSuspended> {
+    return this.transport.json(
+      {
+        method: 'POST',
+        route: '/v1/application/suspend',
+        path: '/v1/application/suspend',
+        profile: 'BodylessNonceMutation',
+        body: reasonBody(reason),
+        signal: options?.signal,
+      },
+      (value) => {
+        const object = asObject(value, 'ApplicationSuspended');
+        const suspendedAt = optionalTimestamp(object, 'suspendedAt', 'ApplicationSuspended');
+        if (requiredString(object, 'status', 'ApplicationSuspended') !== 'suspended' || !suspendedAt)
+          throw new TypeError('Invalid suspension answer.');
+        return {
+          applicationId: requiredUuid(object, 'applicationId', 'ApplicationSuspended'),
+          status: 'suspended',
+          suspendedAt,
+        };
+      },
+    );
+  }
+  /** Revokes a key belonging to this application, including the signing key itself. */
+  async revokeKey(keyId: string, reason: string, options?: CallOptions): Promise<KeyRevoked> {
+    const key = canonicalUuid(keyId, 'keyId');
+    return this.transport.json(
+      {
+        method: 'POST',
+        route: '/v1/keys/{keyId}/revoke',
+        path: `/v1/keys/${key}/revoke`,
+        profile: 'BodylessNonceMutation',
+        body: reasonBody(reason),
+        signal: options?.signal,
+      },
+      (value) => {
+        const object = asObject(value, 'KeyRevoked');
+        const revokedAt = optionalTimestamp(object, 'revokedAt', 'KeyRevoked');
+        if (requiredString(object, 'status', 'KeyRevoked') !== 'revoked' || !revokedAt)
+          throw new TypeError('Invalid revocation answer.');
+        return { keyId: requiredUuid(object, 'keyId', 'KeyRevoked'), status: 'revoked', revokedAt };
+      },
+    );
+  }
+}
+function reasonBody(reason: string): Uint8Array {
+  if (typeof reason !== 'string' || !reason.trim() || reason.trim().length > 500)
+    throw new TypeError('Reason must contain 1 through 500 characters.');
+  return new TextEncoder().encode(JSON.stringify({ reason: reason.trim() }));
 }
 
 /** Reads the current profile so callers see policy changes. */
@@ -157,6 +226,21 @@ export class CatalogueOperations {
         signal: options?.signal,
       },
       parseCatalogueSubcategory,
+    );
+  }
+  /** Reads one wallet-priced catalogue card. */
+  async getCard(walletId: string, cardId: string, options?: CallOptions): Promise<CatalogueCard> {
+    const wallet = canonicalUuid(walletId, 'walletId');
+    const card = canonicalUuid(cardId, 'cardId');
+    return this.transport.json(
+      {
+        method: 'GET',
+        route: '/v1/wallets/{walletId}/catalog/cards/{cardId}',
+        path: `/v1/wallets/${wallet}/catalog/cards/${card}`,
+        profile: 'SafeRead',
+        signal: options?.signal,
+      },
+      parseCatalogueCard,
     );
   }
   /** Walks card pages for the given wallet and subcategory. */
@@ -374,8 +458,8 @@ export class OwnedCardOperations {
     return this.transport.json(
       {
         method: 'GET',
-        route: '/v1/wallets/{walletId}/cards',
-        path: pagePath(`/v1/wallets/${wallet}/cards`, options?.cursor),
+        route: '/v1/wallets/{walletId}/owned-cards',
+        path: pagePath(`/v1/wallets/${wallet}/owned-cards`, options?.cursor),
         profile: 'SafeRead',
         signal: options?.signal,
       },
@@ -389,8 +473,8 @@ export class OwnedCardOperations {
     return this.transport.json(
       {
         method: 'GET',
-        route: '/v1/wallets/{walletId}/cards/{soldCardId}',
-        path: `/v1/wallets/${wallet}/cards/${card}`,
+        route: '/v1/wallets/{walletId}/owned-cards/{soldCardId}',
+        path: `/v1/wallets/${wallet}/owned-cards/${card}`,
         profile: 'SafeRead',
         signal: options?.signal,
       },
@@ -404,8 +488,8 @@ export class OwnedCardOperations {
     return this.transport.json(
       {
         method: 'POST',
-        route: '/v1/wallets/{walletId}/cards/{soldCardId}/reveal',
-        path: `/v1/wallets/${wallet}/cards/${card}/reveal`,
+        route: '/v1/wallets/{walletId}/owned-cards/{soldCardId}/reveal',
+        path: `/v1/wallets/${wallet}/owned-cards/${card}/reveal`,
         profile: 'BodylessNonceMutation',
         signal: options?.signal,
       },
@@ -420,12 +504,12 @@ export class OwnedCardOperations {
   ): Promise<RevealedCredentialCollection> {
     const wallet = canonicalUuid(walletId, 'walletId');
     const invoice = canonicalUuid(invoiceId, 'invoiceId');
-    const route = '/v1/wallets/{walletId}/invoices/{invoiceId}/cards/reveal';
+    const route = '/v1/wallets/{walletId}/invoices/{invoiceId}/owned-cards/reveal';
     return this.transport.json(
       {
         method: 'POST',
         route,
-        path: `/v1/wallets/${wallet}/invoices/${invoice}/cards/reveal`,
+        path: `/v1/wallets/${wallet}/invoices/${invoice}/owned-cards/reveal`,
         profile: 'BodylessNonceMutation',
         signal: options?.signal,
       },

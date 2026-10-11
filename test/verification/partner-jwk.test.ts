@@ -21,3 +21,24 @@ describe('published signing key documents', () => {
     expect(() => parseSigningKeySet('{"keys":[null]}')).toThrow('Every signing key must be a JSON object');
   });
 });
+
+describe('signing key lifecycle document', () => {
+  it('retains lifecycle fields and revoked keys', () => {
+    const keys = [
+      { kid: 'retired', status: 'retired', notBefore: '2026-10-01T00:00:00Z', retiredAt: '2026-10-11T00:00:00Z' },
+    ];
+    const revoked = [{ kid: 'compromised', compromisedAt: '2026-10-11T09:00:00Z' }];
+    expect(parseSigningKeySet(JSON.stringify({ keys, revoked }))).toEqual({ keys, revoked });
+  });
+  it.each([
+    { status: 'other' },
+    { status: 'next', notBefore: 'invalid' },
+    { status: 'next' },
+    { status: 'retired', notBefore: '2026-10-01T00:00:00Z' },
+  ])('rejects malformed lifecycle metadata %j', (key) => {
+    expect(() => parseSigningKeySet(JSON.stringify({ keys: [key] }))).toThrow(TypeError);
+  });
+  it('rejects malformed revoked entries', () => {
+    expect(() => parseSigningKeySet('{"keys":[],"revoked":[{"kid":"bad","compromisedAt":7}]}')).toThrow(TypeError);
+  });
+});

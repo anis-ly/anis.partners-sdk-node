@@ -500,7 +500,8 @@ async function tour(
   const owned = await collect(client.ownedCards.list(wallet.id));
   printJson(owned, print, showSecrets);
   const firstCard = owned[0];
-  if (firstCard !== undefined) printJson(await client.ownedCards.get(wallet.id, firstCard.id), print, showSecrets);
+  if (firstCard !== undefined)
+    printJson(await client.ownedCards.get(wallet.id, firstCard.soldCardId), print, showSecrets);
   printJson(await client.diagnostics.checkSignature(), print, showSecrets);
   printJson(await inspectSigningKeys(settings.authority, fetcher), print, showSecrets);
 }

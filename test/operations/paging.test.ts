@@ -65,11 +65,11 @@ describe('cursor paging', () => {
     const fake = await signedFetchDouble(() => {
       page += 1;
       const card = page === 1 ? '11111111-1111-4111-8111-111111111111' : '22222222-2222-4222-8222-222222222222';
-      return { body: JSON.stringify({ items: [{ id: card }], ...(page === 1 ? { nextCursor: 'next' } : {}) }) };
+      return { body: JSON.stringify({ items: [{ soldCardId: card }], ...(page === 1 ? { nextCursor: 'next' } : {}) }) };
     });
 
     const cards: string[] = [];
-    for await (const item of clientFor(fake.fetcher).ownedCards.list(wallet)) cards.push(item.id);
+    for await (const item of clientFor(fake.fetcher).ownedCards.list(wallet)) cards.push(item.soldCardId);
 
     expect(cards).toHaveLength(2);
     expect(fake.requests[1]?.url.search).toBe('?cursor=next');

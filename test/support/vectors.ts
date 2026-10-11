@@ -1,9 +1,21 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Reads vector files from their checked-in suite folder. */
 export function vectorFiles(folder: string, prefix: string): string[] {
   const directory = join(process.cwd(), 'test', 'vectors', folder);
+  const manifestPath = join(directory, 'manifest.json');
+  if (existsSync(manifestPath)) {
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      vectors: (string | { file?: string; id?: string })[];
+    };
+    return manifest.vectors
+      .map((entry) => {
+        const file = typeof entry === 'string' ? entry : (entry.file ?? `${entry.id ?? ''}.json`);
+        return join(directory, file);
+      })
+      .filter((path) => path.endsWith('.json'));
+  }
   return readdirSync(directory)
     .filter((name) => name.startsWith(prefix) && name.endsWith('.json'))
     .sort()

@@ -3,36 +3,44 @@ import { PartnerResponseVerifier } from '../../src/verification/partner-response
 import type { SigningKeySet } from '../../src/verification/partner-jwk.js';
 import { UnverifiableResponseError } from '../../src/verification/unverifiable-response-error.js';
 import type { VerifiableResponse } from '../../src/verification/verifiable-response.js';
-import { readVector, vectorFiles } from '../support/vectors.js';
+import { signedFetchDouble } from '../support/signed-fetch.js';
 
-interface ResponseFixture {
-  verifyAt: number;
-  request: { signatureInput: string | null };
-  response: { status: number; headers: Record<string, string>; bodyBase64: string };
-  signingKeys: SigningKeySet;
-}
-const acceptedPath = vectorFiles('response', 'RS-').find((path) => path.endsWith('RS-001-safe-read-profile-200.json'));
-if (!acceptedPath) throw new Error('The baseline response vector is missing.');
-const fixture = readVector(acceptedPath, (value) => value as ResponseFixture);
+const fake = await signedFetchDouble(() => ({ body: '{}' }));
+const requestSignatureInput = 'sig1=("@method");created=1;keyid="test"';
+const requestSignature = 'sig1=:raw-request-signature:';
+const received = await fake.fetcher('https://partners.example/v1/orders/test', {
+  headers: { 'Signature-Input': requestSignatureInput, Signature: requestSignature },
+});
 const response: VerifiableResponse = {
-  status: fixture.response.status,
-  headers: fixture.response.headers,
-  body: new Uint8Array(Buffer.from(fixture.response.bodyBase64, 'base64')),
-  ...(fixture.request.signatureInput ? { requestSignatureInput: fixture.request.signatureInput } : {}),
+  status: received.status,
+  headers: {
+    'Content-Digest': received.headers.get('Content-Digest') ?? '',
+    'X-Request-Id': received.headers.get('X-Request-Id') ?? '',
+    'Cache-Control': received.headers.get('Cache-Control') ?? '',
+    'Signature-Input': received.headers.get('Signature-Input') ?? '',
+    Signature: received.headers.get('Signature') ?? '',
+  },
+  body: new Uint8Array(await received.arrayBuffer()),
+  requestSignatureInput,
+  requestSignature,
 };
+delete (response.headers as Record<string, string>)['signature-input'];
+delete (response.headers as Record<string, string>).signature;
+const created = Number(/created=(\d+)/.exec(response.headers['Signature-Input'] ?? '')?.[1]);
+const fixture = { signingKeys: fake.keySet, verifyAt: created };
 
 describe('partner response verifier', () => {
   it('accepts a response exactly sixty whole seconds old at a fractional clock time', async () => {
     const verifier = new PartnerResponseVerifier(
       { get: () => Promise.resolve(fixture.signingKeys), refresh: () => Promise.resolve(fixture.signingKeys) },
-      { now: () => new Date(1789804860999) },
+      { now: () => new Date((created + 60) * 1000 + 999) },
     );
     await expect(verifier.verify(response)).resolves.toBeUndefined();
   });
   it('refuses a response sixty-one whole seconds old at a fractional clock time', async () => {
     const verifier = new PartnerResponseVerifier(
       { get: () => Promise.resolve(fixture.signingKeys), refresh: () => Promise.resolve(fixture.signingKeys) },
-      { now: () => new Date(1789804861999) },
+      { now: () => new Date((created + 61) * 1000 + 999) },
     );
     await expect(verifier.verify(response)).rejects.toMatchObject({ failure: 'created_out_of_window' });
   });
@@ -110,5 +118,91 @@ describe('partner response verifier', () => {
     await expect(
       verifier.verify({ ...response, headers: { ...response.headers, Signature: `sig1=:${noncanonical}:` } }),
     ).rejects.toMatchObject({ failure: 'signature_malformed' });
+  });
+});
+
+describe('v2 response profile and key lifecycle', () => {
+  const verify = (answer: VerifiableResponse, keys: SigningKeySet = fixture.signingKeys) =>
+    new PartnerResponseVerifier(
+      { get: () => Promise.resolve(keys), refresh: () => Promise.resolve(keys) },
+      { now: () => new Date(created * 1000) },
+    ).verify(answer);
+  it.each([undefined, 'anis-response-v1', 'unexpected'])('rejects tag %s', async (tag) => {
+    const input = (response.headers['Signature-Input'] ?? '').replace(
+      ';tag="anis-response-v2"',
+      tag === undefined ? '' : `;tag="${tag}"`,
+    );
+    await expect(
+      verify({ ...response, headers: { ...response.headers, 'Signature-Input': input } }),
+    ).rejects.toMatchObject({ failure: 'profile_unexpected' });
+  });
+  it('binds the raw request signature value', async () => {
+    await expect(verify(response)).resolves.toBeUndefined();
+    await expect(verify({ ...response, requestSignature: 'sig1=:another-signature:' })).rejects.toMatchObject({
+      failure: 'signature_invalid',
+    });
+  });
+  it('requires both request headers in the exact covered order', async () => {
+    const input = (response.headers['Signature-Input'] ?? '').replace(' "signature";req', '');
+    await expect(
+      verify({ ...response, headers: { ...response.headers, 'Signature-Input': input } }),
+    ).rejects.toMatchObject({ failure: 'covered_components_mismatch' });
+    const missing = { ...response };
+    delete missing.requestSignature;
+    await expect(verify(missing)).rejects.toMatchObject({ failure: 'covered_components_mismatch' });
+  });
+  it.each([false, true])('rejects a compromised key with published=%s', async (published) => {
+    const kid = fixture.signingKeys.keys[0]?.kid ?? '';
+    await expect(
+      verify(response, {
+        keys: published ? fixture.signingKeys.keys : [],
+        revoked: [{ kid, compromisedAt: new Date(created * 1000).toISOString() }],
+      }),
+    ).rejects.toMatchObject({ failure: 'key_compromised' });
+  });
+  it.each([undefined, 'unsupported'])('rejects missing or unsupported status %s', async (status) => {
+    const keys = { keys: fixture.signingKeys.keys.map((key) => ({ ...key, status })) } as SigningKeySet;
+    await expect(verify(response, keys)).rejects.toMatchObject({ failure: 'key_rejected' });
+  });
+  it.each([undefined, 'unparseable'])('rejects missing or unparseable notBefore %s', async (notBefore) => {
+    const keys: SigningKeySet = {
+      keys: fixture.signingKeys.keys.map((key) => {
+        const malformed = { ...key };
+        if (notBefore === undefined) delete malformed.notBefore;
+        else malformed.notBefore = notBefore;
+        return malformed;
+      }),
+    };
+    await expect(verify(response, keys)).rejects.toMatchObject({ failure: 'key_rejected' });
+  });
+  it.each([undefined, 'unparseable'])('rejects missing or unparseable retiredAt %s', async (retiredAt) => {
+    const keys: SigningKeySet = {
+      keys: fixture.signingKeys.keys.map((key) => ({
+        ...key,
+        status: 'retired',
+        ...(retiredAt === undefined ? {} : { retiredAt }),
+      })),
+    };
+    await expect(verify(response, keys)).rejects.toMatchObject({ failure: 'key_rejected' });
+  });
+  it.each([
+    ['retired', -1, 'key_retired'],
+    ['next', 1, 'key_not_yet_valid'],
+    ['retired', 0, undefined],
+    ['next', 0, undefined],
+    ['retired', 1, undefined],
+    ['next', -1, undefined],
+  ] as const)('checks %s at offset %s', async (status, offset, failure) => {
+    const boundary = new Date((created + offset) * 1000).toISOString();
+    const keys: SigningKeySet = {
+      keys: fixture.signingKeys.keys.map((key) => ({
+        ...key,
+        status,
+        notBefore: status === 'next' ? boundary : new Date((created - 100) * 1000).toISOString(),
+        ...(status === 'retired' ? { retiredAt: boundary } : {}),
+      })),
+    };
+    if (failure) await expect(verify(response, keys)).rejects.toMatchObject({ failure });
+    else await expect(verify(response, keys)).resolves.toBeUndefined();
   });
 });

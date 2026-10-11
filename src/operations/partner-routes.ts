@@ -27,6 +27,14 @@ export interface PartnerRoute {
  * profile and whether its answers are signed.
  */
 export const PARTNER_ROUTES = [
+  { method: 'POST', template: '/v1/application/suspend', profile: 'BodylessNonceMutation', signedResponse: true },
+  { method: 'POST', template: '/v1/keys/{keyId}/revoke', profile: 'BodylessNonceMutation', signedResponse: true },
+  {
+    method: 'GET',
+    template: '/v1/wallets/{walletId}/catalog/cards/{cardId}',
+    profile: 'SafeRead',
+    signedResponse: false,
+  },
   { method: 'GET', template: '/v1/profile', profile: 'SafeRead', signedResponse: false },
   { method: 'GET', template: '/v1/wallets', profile: 'SafeRead', signedResponse: false },
   { method: 'GET', template: '/v1/wallets/{walletId}', profile: 'SafeRead', signedResponse: false },
@@ -51,17 +59,22 @@ export const PARTNER_ROUTES = [
   },
   { method: 'POST', template: '/v1/wallets/{walletId}/orders', profile: 'OrderMutation', signedResponse: true },
   { method: 'GET', template: '/v1/orders/{operationId}', profile: 'SafeRead', signedResponse: true },
-  { method: 'GET', template: '/v1/wallets/{walletId}/cards', profile: 'SafeRead', signedResponse: false },
-  { method: 'GET', template: '/v1/wallets/{walletId}/cards/{soldCardId}', profile: 'SafeRead', signedResponse: false },
+  { method: 'GET', template: '/v1/wallets/{walletId}/owned-cards', profile: 'SafeRead', signedResponse: false },
+  {
+    method: 'GET',
+    template: '/v1/wallets/{walletId}/owned-cards/{soldCardId}',
+    profile: 'SafeRead',
+    signedResponse: false,
+  },
   {
     method: 'POST',
-    template: '/v1/wallets/{walletId}/cards/{soldCardId}/reveal',
+    template: '/v1/wallets/{walletId}/owned-cards/{soldCardId}/reveal',
     profile: 'BodylessNonceMutation',
     signedResponse: true,
   },
   {
     method: 'POST',
-    template: '/v1/wallets/{walletId}/invoices/{invoiceId}/cards/reveal',
+    template: '/v1/wallets/{walletId}/invoices/{invoiceId}/owned-cards/reveal',
     profile: 'BodylessNonceMutation',
     signedResponse: true,
   },

@@ -71,6 +71,7 @@ This table is generated from `contracts/error-catalogue.json`. “Order placed?�
 | `invitation_invalid`             |       401 | `EnrollmentRefusedError`     | No        | No; final refusal              |
 | `challenge_expired`              |       409 | `EnrollmentRefusedError`     | No        | No; final refusal              |
 | `key_proof_invalid`              |       422 | `EnrollmentRefusedError`     | No        | No; final refusal              |
+| `key_not_revocable`              |       409 | `AnisApiError`               | No        | No; final refusal              |
 | `key_duplicate`                  |       409 | `EnrollmentRefusedError`     | No        | No; final refusal              |
 | `dependency_unavailable`         |       503 | `DependencyUnavailableError` | Yes       | May be unknown; resume same id |
 | `request_timeout`                |       504 | `DependencyUnavailableError` | Yes       | May be unknown; resume same id |
@@ -81,3 +82,9 @@ The typed subclasses group errors that partners commonly handle differently: `In
 `isRetryable` reports the published error catalogue. For orders, always use the `OrderResult.kind` recovery rule as well: an error marked retryable does not mean a new operation id is safe.
 
 `signature_expired` and `invalid_content_digest` remain documented in the published catalogue for compatibility but are not currently emitted by the API.
+
+## Response verification failures
+
+`UnverifiableResponseError.failure` is a closed vocabulary: `signature_missing`, `signature_malformed`, `signature_invalid`, `content_digest_mismatch`, `covered_components_mismatch`, `unknown_key`, `key_rejected`, `algorithm_not_supported`, `label_unexpected`, `created_out_of_window`, `profile_unexpected`, `key_compromised`, `key_retired`, and `key_not_yet_valid`. No unverified response content is returned. The lifecycle and profile rules are described in [security](security.md#response-profile-and-response-key-lifecycle).
+
+Access stop reasons are required, trimmed, and 1–500 characters. Invalid reasons return `validation_failed` (400). Unknown or foreign keys return the same `resource_not_found` (404); a retired key returns `key_not_revocable` (409). Already revoked keys return their current signed state.

@@ -4,7 +4,7 @@ import { Money, parseMoney } from '../../src/models/money.js';
 
 describe('Money', () => {
   it('parses and writes amounts with exactly three places', () => {
-    const money = parseMoney({ amount: '10.5', currency: 'LYD', asOf: '2026-09-19T08:00:00.999Z' });
+    const money = parseMoney({ amount: '10.500', currency: 'LYD', asOf: '2026-09-19T08:00:00.999Z' });
 
     expect(money.amount).toBe('10.500');
     expect(money.toJSON()).toEqual({ amount: '10.500', currency: 'LYD', asOf: '2026-09-19T08:00:00Z' });
@@ -40,11 +40,23 @@ describe('Money', () => {
 
   it('refuses an over-precise amount read from the wire', () => {
     expect(() => parseMoney({ amount: '0.0004', currency: 'LYD' })).toThrow(
-      'Anis amounts have at most three decimal places',
+      'Money.amount must be non-negative with exactly three decimal places.',
     );
   });
 
-  it('keeps negative thousandths exact for the order price guard', () => {
-    expect(Money.of('-0.001', 'LYD').amount).toBe('-0.001');
+  it('rejects negative amounts', () => {
+    expect(() => Money.of('-0.001', 'LYD')).toThrow();
+  });
+});
+
+describe('v2 money wire rules', () => {
+  it.each(['1', '1.2', '-1.000', '1.0000'])('refuses amount %s on the wire', (amount) => {
+    expect(() => parseMoney({ amount, currency: 'LYD' })).toThrow(TypeError);
+  });
+  it.each(['lyd', 'LY', 'LYDD', '123'])('refuses currency %s', (currency) => {
+    expect(() => Money.of('1.000', currency)).toThrow(TypeError);
+  });
+  it('refuses multiplication that produces a negative amount', () => {
+    expect(() => Money.of('1.000', 'LYD').multiply(-1)).toThrow(TypeError);
   });
 });

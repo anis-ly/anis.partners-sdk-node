@@ -25,6 +25,7 @@ export const PartnerResponseSignatureBase = {
     digest: string,
     requestId: string,
     requestSignatureInput?: string,
+    requestSignature?: string,
     location?: string,
     retryAfter?: string,
     replayed?: string,
@@ -37,6 +38,7 @@ export const PartnerResponseSignatureBase = {
     ];
     if (requestSignatureInput)
       result.push({ name: 'signature-input', value: requestSignatureInput, requestBound: true });
+    if (requestSignature) result.push({ name: 'signature', value: requestSignature, requestBound: true });
     for (const [name, value] of [
       ['location', location],
       ['retry-after', retryAfter],
@@ -49,7 +51,7 @@ export const PartnerResponseSignatureBase = {
 
   /** Builds exact UTF-8 bytes; request binding and its `;req` identifier must agree in both places. */
   build(components: readonly ResponseComponent[], created: number, keyId: string): Uint8Array {
-    const params = `(${components.map((part) => `"${part.name}"${part.requestBound ? ';req' : ''}`).join(' ')});created=${String(created)};keyid="${keyId}";alg="${PartnerResponseSignatureBase.algorithm}"`;
+    const params = `(${components.map((part) => `"${part.name}"${part.requestBound ? ';req' : ''}`).join(' ')});created=${String(created)};keyid="${keyId}";alg="${PartnerResponseSignatureBase.algorithm}";tag="anis-response-v2"`;
     const lines = components.map((part) => `"${part.name}"${part.requestBound ? ';req' : ''}: ${part.value}\n`);
     lines.push(`"@signature-params": ${params}`);
     return new TextEncoder().encode(lines.join(''));

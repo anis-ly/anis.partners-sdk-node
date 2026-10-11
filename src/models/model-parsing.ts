@@ -23,7 +23,7 @@ export function requiredString(object: JsonObject, field: string, label: string)
 /** Reads an optional string field; a missing or null member stays absent. */
 export function optionalString(object: JsonObject, field: string, label: string): string | undefined {
   const value = object[field];
-  if (value === undefined || value === null) {
+  if (value === undefined || value === null || value === '') {
     return undefined;
   }
   if (typeof value !== 'string') {

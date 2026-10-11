@@ -14,13 +14,13 @@ import { parseLocalizedText, type LocalizedText } from './catalogue.js';
 /** A sold card as a masked projection; plaintext is never present here. */
 export interface MaskedCard {
   /** Sold-card UUID used by a single-card reveal. */
-  id: string;
+  soldCardId: string;
   /** Order that produced this card, when the API exposes it. */
-  orderOperationId?: string;
+  operationId?: string;
   /** Owner invoice needed for invoice-level reveal. */
   invoiceId?: string;
   /** Catalogue card summary. */
-  card?: MaskedCardProduct;
+  card?: CardSummary;
   /** Masked serial for identification without disclosing the credential. */
   serialNumberMasked?: string;
   /** Whether Anis currently permits the credential to be revealed. */
@@ -33,22 +33,22 @@ export interface MaskedCard {
   expiryDate?: string;
   /** Number printed on the owner invoice. */
   invoiceNumber?: number;
-  /** Printed face value when supplied. */
-  faceValue?: string;
-  /** Catalogue subcategory summary. */
-  subcategory?: MaskedCardSubcategory;
 }
 
-/** A catalogue subcategory summary attached to a sold card. */
-export interface MaskedCardSubcategory {
-  /** Subcategory UUID. */
+/** A category or subcategory summary attached to a card. */
+export interface CardGroupSummary {
+  /** Category or subcategory UUID. */
   id: string;
   /** Localized name when supplied. */
   name?: LocalizedText;
 }
 
 /** A catalogue product summary attached to a sold card or revealed credential. */
-export interface MaskedCardProduct {
+export interface CardSummary {
+  /** Printed face value when supplied. */ faceValue?: string;
+  /** Subcategory logo URL. */ logo?: string;
+  /** Catalogue subcategory. */ subcategory?: CardGroupSummary;
+  /** Catalogue category. */ category?: CardGroupSummary;
   /** Card UUID. */
   id: string;
   /** Localized name when supplied. */
@@ -72,11 +72,11 @@ export interface RevealedCredential {
   revealedAt?: Date;
   /** Last calendar day the card can be used. */
   expiryDate?: string;
-  /** Invoice UUID, present on reveal routes. */
+  /** Invoice UUID for the sold card. */
   invoiceId?: string;
-  /** Product summary, present on reveal routes. */
-  card?: MaskedCardProduct;
-  /** Purchase instant, present on reveal routes. */
+  /** Shared card summary for reveals and order credentials. */
+  card?: CardSummary;
+  /** Purchase instant for the sold card. */
   purchasedAt?: Date;
   /** Redacted representation for accidental string interpolation. */
   toString(): string;
@@ -93,7 +93,7 @@ export interface RevealedCredentialCollection {
 /** Parses a masked sold-card projection. */
 export function parseMaskedCard(json: unknown): MaskedCard {
   const object = asObject(json, 'MaskedCard');
-  const orderOperationId = optionalUuid(object, 'orderOperationId', 'MaskedCard');
+  const operationId = optionalUuid(object, 'operationId', 'MaskedCard');
   const invoiceId = optionalUuid(object, 'invoiceId', 'MaskedCard');
   const card = parseOptionalProduct(object, 'card');
   const serialNumberMasked = optionalString(object, 'serialNumberMasked', 'MaskedCard');
@@ -102,12 +102,10 @@ export function parseMaskedCard(json: unknown): MaskedCard {
     object.unitPrice === undefined || object.unitPrice === null ? undefined : parseMoney(object.unitPrice);
   const expiryDate = optionalDateOnly(object, 'expiryDate', 'MaskedCard');
   const invoiceNumber = optionalInteger(object, 'invoiceNumber', 'MaskedCard');
-  const faceValue = optionalString(object, 'faceValue', 'MaskedCard');
-  const subcategory = parseOptionalSubcategory(object);
   return {
-    id: requiredUuid(object, 'id', 'MaskedCard'),
+    soldCardId: requiredUuid(object, 'soldCardId', 'MaskedCard'),
     credentialAvailable: optionalBoolean(object, 'credentialAvailable', 'MaskedCard') ?? false,
-    ...(orderOperationId === undefined ? {} : { orderOperationId }),
+    ...(operationId === undefined ? {} : { operationId }),
     ...(invoiceId === undefined ? {} : { invoiceId }),
     ...(card === undefined ? {} : { card }),
     ...(serialNumberMasked === undefined ? {} : { serialNumberMasked }),
@@ -115,8 +113,6 @@ export function parseMaskedCard(json: unknown): MaskedCard {
     ...(unitPrice === undefined ? {} : { unitPrice }),
     ...(expiryDate === undefined ? {} : { expiryDate }),
     ...(invoiceNumber === undefined ? {} : { invoiceNumber }),
-    ...(faceValue === undefined ? {} : { faceValue }),
-    ...(subcategory === undefined ? {} : { subcategory }),
   };
 }
 
@@ -161,29 +157,38 @@ export function parseRevealedCredentialCollection(json: unknown): RevealedCreden
   return { items: items.map(parseRevealedCredential) };
 }
 
-function parseOptionalProduct(object: Record<string, unknown>, field: string): MaskedCardProduct | undefined {
+function parseOptionalProduct(object: Record<string, unknown>, field: string): CardSummary | undefined {
   const value = object[field];
   if (value === undefined || value === null) {
     return undefined;
   }
   const nested = asObject(value, `MaskedCard.${field}`);
   const name = nested.name === undefined || nested.name === null ? undefined : parseLocalizedText(nested.name);
+  const faceValue = optionalString(nested, 'faceValue', 'CardSummary');
+  const logo = optionalString(nested, 'logo', 'CardSummary');
+  const subcategory = parseOptionalGroup(nested, 'subcategory');
+  const category = parseOptionalGroup(nested, 'category');
   return {
     id: requiredUuid(nested, 'id', `MaskedCard.${field}`),
-    ...(name === undefined ? {} : { name }),
+    ...(name === undefined || Object.keys(name).length === 0 ? {} : { name }),
+    ...(faceValue === undefined ? {} : { faceValue }),
+    ...(logo === undefined ? {} : { logo }),
+    ...(subcategory === undefined ? {} : { subcategory }),
+    ...(category === undefined ? {} : { category }),
   };
 }
 
-function parseOptionalSubcategory(object: Record<string, unknown>): MaskedCardSubcategory | undefined {
-  const value = object.subcategory;
+/** Parses a category or subcategory identity and omits empty localized names. */
+export function parseOptionalGroup(object: Record<string, unknown>, field: string): CardGroupSummary | undefined {
+  const value = object[field];
   if (value === undefined || value === null) {
     return undefined;
   }
-  const nested = asObject(value, 'MaskedCard.subcategory');
+  const nested = asObject(value, `CardSummary.${field}`);
   const name = nested.name === undefined || nested.name === null ? undefined : parseLocalizedText(nested.name);
   return {
-    id: requiredUuid(nested, 'id', 'MaskedCard.subcategory'),
-    ...(name === undefined ? {} : { name }),
+    id: requiredUuid(nested, 'id', `CardSummary.${field}`),
+    ...(name === undefined || Object.keys(name).length === 0 ? {} : { name }),
   };
 }
 
