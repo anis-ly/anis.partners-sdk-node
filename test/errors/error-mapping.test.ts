@@ -63,6 +63,7 @@ const decisions: Record<string, { error: ErrorConstructor; outcome: OrderRefusal
   reveal_not_allowed: { error: AuthorizationError, outcome: 'notPlaced' },
   signature_expired: { error: InvalidCredentialsError, outcome: 'unknown' },
   source_ip_not_allowed: { error: AuthorizationError, outcome: 'notPlaced' },
+  spending_limit_exceeded: { error: LimitExceededError, outcome: 'notPlaced' },
   validation_failed: { error: ValidationFailedError, outcome: 'notPlaced' },
   wallet_disabled: { error: AuthorizationError, outcome: 'notPlaced' },
   wallet_expired: { error: AuthorizationError, outcome: 'notPlaced' },

@@ -1,3 +1,6 @@
+/** Longest time a fetched key document is trusted, so a withdrawn Anis key stops verifying answers within five minutes. */
+export const MAX_SIGNING_KEY_CACHE_SECONDS = 300;
+
 /** Client settings that select one issued authority and bound signing, caching, and request time. */
 export interface ClientOptions {
   /** Issued Anis authority; the host is the only environment selector. */
@@ -6,7 +9,7 @@ export interface ClientOptions {
   signatureLifetimeSeconds?: number | undefined;
   /** Optional Arabic or English presentation preference. */
   acceptLanguage?: 'ar' | 'en' | undefined;
-  /** Lifetime of the published response signing-key document cache. */
+  /** Lifetime of the published response signing-key document cache: five minutes by default and at most five minutes. */
   signingKeyCacheSeconds?: number | undefined;
   /** Per-request timeout; an order timeout leaves its outcome unknown. */
   timeoutMs?: number | undefined;
@@ -36,14 +39,18 @@ export function validateClientOptions(options: ClientOptions): ValidatedClientOp
   if (authority.pathname !== '/' || authority.search || authority.hash)
     throw new TypeError('Authority must not include a path, query, or fragment.');
   const signatureLifetimeSeconds = options.signatureLifetimeSeconds ?? 60;
-  const signingKeyCacheSeconds = options.signingKeyCacheSeconds ?? 600;
+  const signingKeyCacheSeconds = options.signingKeyCacheSeconds ?? MAX_SIGNING_KEY_CACHE_SECONDS;
   const timeoutMs = options.timeoutMs ?? 30_000;
   if (!Number.isInteger(signatureLifetimeSeconds) || signatureLifetimeSeconds < 1 || signatureLifetimeSeconds > 60)
     throw new RangeError(
       'signatureLifetimeSeconds must be from 1 through 60 so signed order answers remain fresh enough to verify.',
     );
-  if (!Number.isFinite(signingKeyCacheSeconds) || signingKeyCacheSeconds <= 0)
-    throw new RangeError('signingKeyCacheSeconds must be a positive number.');
+  if (
+    !Number.isFinite(signingKeyCacheSeconds) ||
+    signingKeyCacheSeconds <= 0 ||
+    signingKeyCacheSeconds > MAX_SIGNING_KEY_CACHE_SECONDS
+  )
+    throw new RangeError('signingKeyCacheSeconds must be a positive number of seconds, at most 300 (five minutes).');
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647)
     throw new RangeError('timeoutMs must be an integer from 1 through 2147483647.');
   const acceptLanguage: unknown = (options as { acceptLanguage?: unknown }).acceptLanguage;

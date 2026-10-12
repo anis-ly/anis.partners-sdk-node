@@ -5,7 +5,7 @@ describe('validateClientOptions', () => {
   it('applies the SDK defaults', () => {
     expect(validateClientOptions({ authority: 'https://partners.example' })).toMatchObject({
       signatureLifetimeSeconds: 60,
-      signingKeyCacheSeconds: 600,
+      signingKeyCacheSeconds: 300,
       timeoutMs: 30000,
     });
   });
@@ -31,6 +31,12 @@ describe('validateClientOptions', () => {
     expect(() =>
       validateClientOptions({ authority: 'https://partners.example', signatureLifetimeSeconds: 61 }),
     ).toThrow(RangeError);
+  });
+
+  it('refuses a key cache longer than five minutes', () => {
+    expect(() => validateClientOptions({ authority: 'https://partners.example', signingKeyCacheSeconds: 301 })).toThrow(
+      /signingKeyCacheSeconds/,
+    );
   });
 
   it('refuses authorities that include a path', () => {

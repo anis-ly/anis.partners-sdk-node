@@ -114,6 +114,7 @@ One row for every .NET 1.3.0 test method listed by the shared port card. Framewo
 | `Every_entry_matches_or_does_not_as_declared`                                          | it.each: `$id matches as declared`                                                                                                                                              |
 | `The_manifest_lists_exactly_the_vectors_on_disk`                                       | `contains all four safety-code vectors`; `checks each safety-code vector input count against the manifest`                                                                      |
 | `Only_a_thumbprint_has_a_safety_code`                                                  | `requires a complete thumbprint before producing a safety code`                                                                                                                 |
+| `A_spending_capped_order_is_not_placed_and_carries_the_signed_retry_after`             | test/operations/order-outcomes.test.ts — a spending-capped order is not placed and carries the signed Retry-After                                                               |
 
 ## Review regressions
 
@@ -164,6 +165,12 @@ One row for every .NET 1.3.0 test method listed by the shared port card. Framewo
 | Human request logs include their response facts                           | `test/client/pipeline-rules.test.ts` — checks request id, elapsed milliseconds, retryability, and replay state in messages.                                                                           |
 | Async logger failures cannot change operation results                     | `test/observability/telemetry-isolation.test.ts` — covers reads, reveals, completed/unknown orders, enrollment, and key fetch logs.                                                                   |
 | Console journals preserve credentials and survive atomic updates          | `test/samples/console.test.ts` — completed-withheld preserves stored codes; temp-file writes use mode 0600; unknown/processing return status 4.                                                       |
+| notBefore applies to every published key                                  | `test/verification/partner-response-verifier.test.ts` — refuses a %s key used before its notBefore (offset %s).                                                                                       |
+| Signing-key cache has a five-minute default and cap                       | `test/verification/http-signing-key-source.test.ts` and `test/client/client-options.test.ts` — default expiry and cache lifetime refusals.                                                            |
+| Unknown-key fetches share a thirty-second cooldown                        | `test/verification/http-signing-key-source.test.ts` — failed/aborted fetches and concurrency; `test/verification/partner-response-verifier.test.ts` — cooldown and revoked-key checks.                |
+| Shared-entry age starts at its original fetch                             | `test/verification/http-signing-key-source.test.ts` — expires a shared entry five minutes after its original fetch.                                                                                   |
+
+Concurrent refresh failure differs from Python/.NET: Node propagates the failed in-flight fetch to every caller sharing it, so all joiners receive `SigningKeyDocumentUnavailableError`. A subsequent call inside the cooldown returns the held document without fetching again. `test/verification/http-signing-key-source.test.ts` pins this behavior in `rejects every concurrent unknown-key refresh caller when the shared fetch fails`.
 
 ## Live-run parity corrections
 

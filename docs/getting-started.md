@@ -70,7 +70,7 @@ const client = AnisPartnersClient.create({
     authority: setting('ANIS_PARTNERS_AUTHORITY'),
     signatureLifetimeSeconds: 60,
     acceptLanguage: 'en',
-    signingKeyCacheSeconds: 600,
+    signingKeyCacheSeconds: 300,
     timeoutMs: 30_000,
   },
   signer,
@@ -115,7 +115,7 @@ Compare the reported authority, path, query, and components with the request tha
 
 ## Serverless hosts
 
-The SDK caches Anis's public response-signing-key document in process memory. In a short-lived or multi-instance host, supply `keyCache` so each instance can share the document and avoid an extra fetch. The cache stores only the public key document; it never stores your private signing key.
+The SDK caches Anis's public response-signing-key document in process memory. In a short-lived or multi-instance host, supply `keyCache` so each instance can share the document and avoid an extra fetch. The cache stores only the public key document; it never stores your private signing key. Each shared entry expires 5 minutes after Anis's document was first fetched, however many instances copy it.
 
 ```ts
 import { AnisPartnersClient, PemP256Signer } from '@anis-ly/partners';

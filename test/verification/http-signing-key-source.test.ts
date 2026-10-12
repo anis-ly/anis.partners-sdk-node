@@ -18,6 +18,170 @@ const response = (): Response =>
   new Response(document, { status: 200, headers: { 'Content-Type': 'application/json' } });
 
 describe('HTTP signing-key source', () => {
+  it('refuses a cache lifetime longer than five minutes', () => {
+    expect(() => new HttpSigningKeySource({ authority: 'https://partners.anis.ly', cacheSeconds: 301 })).toThrow(
+      RangeError,
+    );
+    expect(() => new HttpSigningKeySource({ authority: 'https://partners.anis.ly', cacheSeconds: 300 })).not.toThrow();
+  });
+  it('keeps a fetched document for five minutes by default', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetch = vi.fn(() => Promise.resolve(response()));
+      const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch });
+      await source.get();
+      await vi.advanceTimersByTimeAsync(299_999);
+      await source.get();
+      expect(fetch).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(2);
+      await source.get();
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('expires a shared entry five minutes after its original fetch', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-12T12:00:00Z'));
+    try {
+      let stored = JSON.stringify({ fetchedAt: Date.now() / 1000 - 299, document });
+      const cache: KeyDocumentCache = {
+        get: () => Promise.resolve(stored),
+        set: () => Promise.resolve(),
+      };
+      const fetch = vi.fn(() => Promise.resolve(response()));
+      const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch, documentCache: cache });
+      await source.get();
+      expect(fetch).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_001);
+      await source.get();
+      expect(fetch).toHaveBeenCalledTimes(1);
+      stored = JSON.stringify({ fetchedAt: Math.floor(Date.now() / 1000) - 300, document });
+      await new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch, documentCache: cache }).get();
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('caps a shared entry with a future fetch time at five minutes', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-12T12:00:00Z'));
+    try {
+      const stored = JSON.stringify({ fetchedAt: Date.now() / 1000 + 60, document });
+      const cache: KeyDocumentCache = {
+        get: () => Promise.resolve(stored),
+        set: () => Promise.resolve(),
+      };
+      const fetch = vi.fn(() => Promise.resolve(response()));
+      const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch, documentCache: cache });
+
+      await source.get();
+      expect(fetch).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(299_999);
+      await source.get();
+      expect(fetch).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await source.get();
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refetches for an unknown key at most once per thirty seconds, counting a failed fetch', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetch = vi
+        .fn(() => Promise.resolve(response()))
+        .mockImplementationOnce(() => Promise.resolve(response()))
+        .mockImplementationOnce(() => Promise.resolve(new Response('', { status: 503 })));
+      const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch });
+      const held = await source.get();
+      await expect(source.refresh()).rejects.toBeInstanceOf(SigningKeyDocumentUnavailableError);
+      await expect(source.refresh()).resolves.toBe(held);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(29_999);
+      await expect(source.refresh()).resolves.toBe(held);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      await source.refresh();
+      expect(fetch).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('shares one unknown-key refetch among concurrent callers', async () => {
+    let release: ((response: Response) => void) | undefined;
+    const fetch = vi
+      .fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = resolve;
+          }),
+      )
+      .mockImplementationOnce(() => Promise.resolve(response()));
+    const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch });
+    await source.get();
+    const first = source.refresh();
+    const second = source.refresh();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    release?.(response());
+    const [firstDocument, secondDocument] = await Promise.all([first, second]);
+    expect(firstDocument).toBe(secondDocument);
+  });
+  it('rejects every concurrent unknown-key refresh caller when the shared fetch fails', async () => {
+    let release: ((response: Response) => void) | undefined;
+    const fetch = vi
+      .fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = resolve;
+          }),
+      )
+      .mockImplementationOnce(() => Promise.resolve(response()));
+    const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch });
+    const held = await source.get();
+    const first = source.refresh();
+    const second = source.refresh();
+    const results = Promise.allSettled([first, second]);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    release?.(new Response('', { status: 503 }));
+    for (const result of await results) {
+      expect(result.status).toBe('rejected');
+      if (result.status !== 'rejected') throw new TypeError('Expected a refused refresh.');
+      expect(result.reason).toBeInstanceOf(SigningKeyDocumentUnavailableError);
+    }
+    await expect(source.refresh()).resolves.toBe(held);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('counts an aborted unknown-key fetch towards the cooldown', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>(
+        (_resource, init) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              'abort',
+              () => {
+                reject(new DOMException('Canceled', 'AbortError'));
+              },
+              {
+                once: true,
+              },
+            );
+          }),
+      )
+      .mockImplementationOnce(() => Promise.resolve(response()));
+    const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch });
+    const held = await source.get();
+    const controller = new AbortController();
+    const pending = source.refresh({ signal: controller.signal });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(source.refresh()).resolves.toBe(held);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
   it('uses the cached document within its TTL', async () => {
     const fetch = vi.fn(() => Promise.resolve(response()));
     const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch });
@@ -66,7 +230,7 @@ describe('HTTP signing-key source', () => {
       vi.useRealTimers();
     }
   });
-  it('always fetches when refresh is requested', async () => {
+  it('fetches when the first unknown-key refresh is requested', async () => {
     const fetch = vi.fn(() => Promise.resolve(response()));
     const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch });
     await source.get();

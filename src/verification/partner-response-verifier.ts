@@ -93,13 +93,18 @@ export class PartnerResponseVerifier {
       fail('key_rejected', 'The published key has no supported lifecycle status.');
     const notBefore = Date.parse(key.notBefore ?? '');
     if (!Number.isFinite(notBefore)) fail('key_rejected', 'The published key has no valid notBefore instant.');
+    // Whole-second signatures cannot use a key before its activation, including fractions Date.parse truncates.
+    const activationFraction = /:\d{2}\.(\d+)/.exec(key.notBefore ?? '')?.[1];
+    const activationSecond =
+      activationFraction !== undefined && /[1-9]/.test(activationFraction)
+        ? Math.floor(notBefore / 1000) + 1
+        : Math.ceil(notBefore / 1000);
     const retiredAt = Date.parse(key.retiredAt ?? '');
     if (key.status === 'retired' && !Number.isFinite(retiredAt))
       fail('key_rejected', 'The retired key has no valid retiredAt instant.');
     if (key.status === 'retired' && parsed.created * 1000 > retiredAt)
       fail('key_retired', 'The signature was created after the key retired.');
-    if (key.status === 'next' && parsed.created * 1000 < notBefore)
-      fail('key_not_yet_valid', 'The signature predates the next key activation.');
+    if (parsed.created < activationSecond) fail('key_not_yet_valid', 'The signature predates the key activation.');
     const signatureBytes = byteSequence(signature);
     if (signatureBytes?.length !== 64) fail('signature_malformed', 'P-256 P1363 signatures must be exactly 64 bytes.');
     const x = decodeBase64Url(key.x);

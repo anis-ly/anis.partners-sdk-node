@@ -37,6 +37,7 @@ export const ERROR_CODES = [
   'reveal_not_allowed',
   'signature_expired',
   'source_ip_not_allowed',
+  'spending_limit_exceeded',
   'validation_failed',
   'wallet_disabled',
   'wallet_expired',
