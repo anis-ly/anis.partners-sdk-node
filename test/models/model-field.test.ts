@@ -148,6 +148,10 @@ describe('v2 shared card shapes', () => {
     expect(wallet).not.toHaveProperty('currency');
     expect(wallet.balance.currency).toBe('LYD');
   });
+  it('reads a wallet whose balance is below zero while it uses allowed debt', () => {
+    const wallet = parseWallet({ id: cardId, balance: { amount: '-150.000', currency: 'LYD' } });
+    expect(wallet.balance.amount).toBe('-150.000');
+  });
   const summary = {
     id: cardId,
     name: { en: 'Card', ar: '' },

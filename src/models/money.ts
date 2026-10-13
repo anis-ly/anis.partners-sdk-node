@@ -40,17 +40,17 @@ export class Money {
     if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) {
       throw new TypeError('A currency code is required.');
     }
-    const match = /^(\d+)(?:\.(\d+))?$/.exec(amount);
+    const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(amount);
     if (match === null) {
       throw new TypeError('A money amount must be a decimal string.');
     }
-    const whole = BigInt(match[1] ?? '0');
-    const fraction = match[2] ?? '';
+    const whole = BigInt(match[2] ?? '0');
+    const fraction = match[3] ?? '';
     if (fraction.length > 3) {
       throw new TypeError('Anis amounts have at most three decimal places');
     }
-    const thousandths = whole * 1000n + BigInt((fraction + '000').slice(0, 3));
-    return new Money(thousandths, currency, asOf);
+    const magnitude = whole * 1000n + BigInt((fraction + '000').slice(0, 3));
+    return new Money(match[1] === '-' ? -magnitude : magnitude, currency, asOf);
   }
 
   /** The amount rendered with exactly three decimal places so Anis receives the contract's decimal-string form. */
@@ -93,12 +93,17 @@ export class Money {
   }
 }
 
-/** Parses the contract object and refuses JSON numbers for amounts. */
+/**
+ * Parses the contract object and refuses JSON numbers for amounts.
+ *
+ * @remarks An amount Anis sends may be negative: a wallet balance is below zero while the wallet uses allowed debt.
+ * Prices and totals are never negative, and an order still refuses a price that is not greater than zero.
+ */
 export function parseMoney(json: unknown): Money {
   const object = asObject(json, 'Money');
   const amount = requiredString(object, 'amount', 'Money');
-  if (!/^\d+\.\d{3}$/.test(amount))
-    throw new TypeError('Money.amount must be non-negative with exactly three decimal places.');
+  if (!/^-?\d+\.\d{3}$/.test(amount))
+    throw new TypeError('Money.amount must be a decimal string with exactly three decimal places.');
   const currency = requiredString(object, 'currency', 'Money');
   const asOf = optionalTimestamp(object, 'asOf', 'Money');
   return Money.of(amount, currency, asOf);
