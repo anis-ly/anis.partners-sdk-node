@@ -9,7 +9,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 1.x is deprecated — upgrade.
 
 - Require `tag="anis-response-v2"` and bind both raw request signature headers in every signed machine answer.
-- Reject compromised response keys and signatures outside next/retired key signing intervals.
+- Reject compromised response keys (`key_compromised`), signatures created before any published key's `notBefore` (`key_not_yet_valid` for active, next and retired keys), and signatures created after a retired key's `retiredAt` (`key_retired`).
+- The signing-key document is cached for 5 minutes by default and at most 5 minutes; `signingKeyCacheSeconds` above 300 is refused.
+- An unknown response key id re-fetches the key document at most once per 30 seconds per client (key source instance), failed fetches included; inside that window it fails as `unknown_key` without a request.
+- Documentation: retired keys stay published for 90 days after retirement.
+- Recognise `spending_limit_exceeded` (HTTP 429): a spending-capped order is not placed and is reported as `LimitExceededError` with the `Retry-After` delay until the spending window ends.
 - Use `/owned-cards` routes and `soldCardId` / `operationId` on masked cards. Share `CardSummary` across owned cards, reveals, and order credentials; include logo and category on catalogue cards and description on subcategory list entries.
 - Wallet currency is available through `balance.currency`. Wire money is non-negative with exactly three decimal places and uppercase three-letter currency codes.
 - Add `access.suspendApplication(reason)`, `access.revokeKey(keyId, reason)`, and `catalogue.getCard(walletId, cardId)`.

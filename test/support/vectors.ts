@@ -7,15 +7,17 @@ export function vectorFiles(folder: string, prefix: string): string[] {
   const manifestPath = join(directory, 'manifest.json');
   if (existsSync(manifestPath)) {
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-      vectors: (string | { file?: string; id?: string })[];
+      vectors?: (string | { file?: string; id?: string })[];
     };
-    return manifest.vectors
-      .map((entry) => {
-        const file = typeof entry === 'string' ? entry : (entry.file ?? `${entry.id ?? ''}.json`);
-        return join(directory, file);
-      })
-      .filter((path) => path.endsWith('.json'));
+    if (manifest.vectors !== undefined)
+      return manifest.vectors
+        .map((entry) => {
+          const file = typeof entry === 'string' ? entry : (entry.file ?? `${entry.id ?? ''}.json`);
+          return join(directory, file);
+        })
+        .filter((path) => path.endsWith('.json'));
   }
+  // Profile-only manifests describe the suite without listing its vector files.
   return readdirSync(directory)
     .filter((name) => name.startsWith(prefix) && name.endsWith('.json'))
     .sort()

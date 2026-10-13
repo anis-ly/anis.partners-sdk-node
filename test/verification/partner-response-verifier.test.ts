@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PartnerResponseVerifier } from '../../src/verification/partner-response-verifier.js';
+import { HttpSigningKeySource } from '../../src/verification/http-signing-key-source.js';
 import type { SigningKeySet } from '../../src/verification/partner-jwk.js';
 import { UnverifiableResponseError } from '../../src/verification/unverifiable-response-error.js';
 import type { VerifiableResponse } from '../../src/verification/verifiable-response.js';
@@ -81,6 +82,27 @@ describe('partner response verifier', () => {
     expect(get).toHaveBeenCalledTimes(1);
     expect(refresh).toHaveBeenCalledTimes(1);
   });
+  it('answers unknown_key without fetching again inside the cooldown', async () => {
+    const fetch = vi.fn(() => Promise.resolve(new Response('{"keys":[]}')));
+    const source = new HttpSigningKeySource({ authority: 'https://partners.example', fetch });
+    const verifier = new PartnerResponseVerifier(source, { now: () => new Date(created * 1000) });
+
+    await expect(verifier.verify(response)).rejects.toMatchObject({ failure: 'unknown_key' });
+    await expect(verifier.verify(response)).rejects.toMatchObject({ failure: 'unknown_key' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it('never refreshes a revoked response key', async () => {
+    const keys: SigningKeySet = {
+      keys: [],
+      revoked: [{ kid: fixture.signingKeys.keys[0]?.kid ?? '', compromisedAt: new Date(created * 1000).toISOString() }],
+    };
+    const fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify(keys))));
+    const source = new HttpSigningKeySource({ authority: 'https://partners.example', fetch });
+    const verifier = new PartnerResponseVerifier(source, { now: () => new Date(created * 1000) });
+
+    await expect(verifier.verify(response)).rejects.toMatchObject({ failure: 'key_compromised' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it('reports refusals with the public exception type', async () => {
     const verifier = new PartnerResponseVerifier(
       { get: () => Promise.resolve({ keys: [] }), refresh: () => Promise.resolve({ keys: [] }) },
@@ -127,6 +149,53 @@ describe('v2 response profile and key lifecycle', () => {
       { get: () => Promise.resolve(keys), refresh: () => Promise.resolve(keys) },
       { now: () => new Date(created * 1000) },
     ).verify(answer);
+  it.each([
+    ['active', 1, 'key_not_yet_valid'],
+    ['active', 0, undefined],
+    ['next', 1, 'key_not_yet_valid'],
+    ['next', 0, undefined],
+    ['retired', 1, 'key_not_yet_valid'],
+    ['retired', 0, undefined],
+  ] as const)('refuses a %s key used before its notBefore (offset %s)', async (status, offset, failure) => {
+    const keys: SigningKeySet = {
+      keys: fixture.signingKeys.keys.map((key) => ({
+        ...key,
+        status,
+        notBefore: new Date((created + offset) * 1000).toISOString(),
+        ...(status === 'retired' ? { retiredAt: new Date((created + 100) * 1000).toISOString() } : {}),
+      })),
+    };
+    if (failure) await expect(verify(response, keys)).rejects.toMatchObject({ failure });
+    else await expect(verify(response, keys)).resolves.toBeUndefined();
+  });
+  it.each(
+    (['active', 'next', 'retired'] as const).flatMap((status) =>
+      (
+        [
+          ['Z', 0, undefined],
+          ['.0000Z', 0, undefined],
+          ['.0001Z', 0, 'key_not_yet_valid'],
+          ['.0000001Z', 0, 'key_not_yet_valid'],
+          ['.5001Z', 0, 'key_not_yet_valid'],
+          ['.0001Z', -1, undefined],
+        ] as const
+      ).map(([suffix, offset, failure]) => ({ status, suffix, offset, failure })),
+    ),
+  )(
+    'checks $status key activation at second offset $offset with suffix $suffix',
+    async ({ status, suffix, offset, failure }) => {
+      const keys: SigningKeySet = {
+        keys: fixture.signingKeys.keys.map((key) => ({
+          ...key,
+          status,
+          notBefore: new Date((created + offset) * 1000).toISOString().replace('.000Z', suffix),
+          ...(status === 'retired' ? { retiredAt: new Date((created + 100) * 1000).toISOString() } : {}),
+        })),
+      };
+      if (failure) await expect(verify(response, keys)).rejects.toMatchObject({ failure });
+      else await expect(verify(response, keys)).resolves.toBeUndefined();
+    },
+  );
   it.each([undefined, 'anis-response-v1', 'unexpected'])('rejects tag %s', async (tag) => {
     const input = (response.headers['Signature-Input'] ?? '').replace(
       ';tag="anis-response-v2"',

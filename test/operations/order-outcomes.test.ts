@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AnisPartnersClient } from '../../src/client.js';
-import { InsufficientBalanceError, RateLimitedError } from '../../src/errors/anis-api-error.js';
+import { InsufficientBalanceError, LimitExceededError, RateLimitedError } from '../../src/errors/anis-api-error.js';
 import { MalformedResponseError } from '../../src/errors/malformed-response-error.js';
 import { Money } from '../../src/models/money.js';
 import { KeyedSigner } from '../../src/signing/keyed-signer.js';
@@ -267,6 +267,24 @@ describe('order outcomes', () => {
     if (result.kind !== 'unknown') throw new TypeError('Expected an unresolved order.');
     expect(result.suggestedDelayMs).toBe(14000);
     expect(result.cause).toBeInstanceOf(RateLimitedError);
+  });
+
+  it('a spending-capped order is not placed and carries the signed Retry-After', async () => {
+    const fake = await signedFetchDouble(() => ({
+      status: 429,
+      headers: { 'Retry-After': '3600' },
+      body: '{"status":429,"code":"spending_limit_exceeded"}',
+    }));
+
+    const result = await clientFor(fake.fetcher).orders.create(walletId, operationId, order);
+
+    expect(result.kind).toBe('notPlaced');
+    if (result.kind !== 'notPlaced') throw new TypeError('Expected a closed refusal.');
+    expect(result.refusal).toBeInstanceOf(LimitExceededError);
+    expect(result.refusal.retryAfter).toBe(3600);
+    expect(result.refusal.status).toBe(429);
+    expect(result.refusal.isRetryable).toBe(false);
+    expect(result.refusal.orderOutcome).toBe('notPlaced');
   });
 
   it('uses a default retry delay when a rate refusal omits Retry-After', async () => {

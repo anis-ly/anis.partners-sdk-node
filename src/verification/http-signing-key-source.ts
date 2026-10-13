@@ -1,9 +1,13 @@
 import { createHash } from 'node:crypto';
+import { MAX_SIGNING_KEY_CACHE_SECONDS } from '../client-options.js';
 import type { SigningKeySet } from './partner-jwk.js';
 import { parseSigningKeySet } from './partner-jwk.js';
 import type { SigningKeyRequestOptions, SigningKeySource } from './signing-key-source.js';
 import { safeCounter, safeLog } from '../internal/safe-telemetry.js';
 import { SigningKeyDocumentUnavailableError } from '../errors/signing-key-document-unavailable-error.js';
+
+/** Shortest gap between two re-fetches caused by unknown key ids, so forged answers cannot make the SDK flood Anis. */
+const UNKNOWN_KEY_REFETCH_COOLDOWN_MS = 30_000;
 
 /** Optional shared cache for serverless instances that do not retain process memory between requests. */
 export interface KeyDocumentCache {
@@ -27,7 +31,7 @@ export interface SigningKeyLogger {
 export interface HttpSigningKeySourceOptions {
   /** Partner authority whose published keys verify signed responses. */
   authority: string | URL;
-  /** Cache duration; ten minutes by default limits requests while allowing key rotation to propagate. */
+  /** Cache duration; five minutes by default and at most five minutes, so a withdrawn key stops verifying answers quickly. */
   cacheSeconds?: number;
   /** Injectable fetch function for hosts and tests that control outbound HTTP. */
   fetch?: typeof globalThis.fetch;
@@ -45,14 +49,17 @@ export class HttpSigningKeySource implements SigningKeySource {
   private readonly cache?: KeyDocumentCache;
   private readonly logger?: SigningKeyLogger;
   private cached?: { document: SigningKeySet; until: number };
+  private lastUnknownKeyFetchAt: number | undefined;
   private inFlight: { controller: AbortController; waiters: number; promise: Promise<SigningKeySet> } | undefined;
 
   /** Creates an authority-scoped source; caching avoids a key-document request for every Partner response. */
   constructor(options: HttpSigningKeySourceOptions) {
     this.authority = new URL(options.authority);
-    this.cacheSeconds = options.cacheSeconds ?? 600;
+    this.cacheSeconds = options.cacheSeconds ?? MAX_SIGNING_KEY_CACHE_SECONDS;
     if (!Number.isFinite(this.cacheSeconds) || this.cacheSeconds < 0)
       throw new RangeError('Cache seconds must be non-negative.');
+    if (this.cacheSeconds > MAX_SIGNING_KEY_CACHE_SECONDS)
+      throw new RangeError('Cache seconds must be at most 300 (five minutes).');
     this.fetcher = options.fetch ?? globalThis.fetch;
     if (options.documentCache !== undefined) this.cache = options.documentCache;
     if (options.logger !== undefined) this.logger = options.logger;
@@ -67,9 +74,18 @@ export class HttpSigningKeySource implements SigningKeySource {
     return this.fetchAndCache(reason, options?.signal);
   }
 
-  /** Forces a fetch after rotation or an explicit caller refresh, even when the cache is still fresh. */
+  /** Re-fetches after an unknown key at most once per 30 seconds; inside that window the held document answers. */
   async refresh(options?: SigningKeyRequestOptions): Promise<SigningKeySet> {
     throwIfAborted(options?.signal);
+    if (this.inFlight) return this.waitForFlight(this.inFlight, options?.signal);
+    const now = performance.now();
+    if (
+      this.cached !== undefined &&
+      this.lastUnknownKeyFetchAt !== undefined &&
+      now - this.lastUnknownKeyFetchAt < UNKNOWN_KEY_REFETCH_COOLDOWN_MS
+    )
+      return this.cached.document;
+    this.lastUnknownKeyFetchAt = now;
     return this.fetchAndCache('refresh', options?.signal);
   }
 
@@ -138,7 +154,11 @@ export class HttpSigningKeySource implements SigningKeySource {
           const envelope: unknown = JSON.parse(stored);
           if (isCacheEnvelope(envelope)) {
             const nowSeconds = Date.now() / 1000;
-            const remainingMs = (envelope.fetchedAt + this.cacheSeconds - nowSeconds) * 1000;
+            // Age counts from the original fetch so a copied entry never restarts its five minutes.
+            const remainingMs = Math.min(
+              (envelope.fetchedAt + this.cacheSeconds - nowSeconds) * 1000,
+              this.cacheSeconds * 1000,
+            );
             if (remainingMs > 0 && envelope.fetchedAt <= nowSeconds + 60) {
               const document = parseSigningKeySet(envelope.document);
               this.cached = { document, until: performance.now() + remainingMs };

@@ -57,6 +57,7 @@ This table is generated from `contracts/error-catalogue.json`. â€œOrder placed?â
 | `purchase_not_allowed`           | 403 / 409 | `AuthorizationError`         | No        | No; final refusal              |
 | `owner_limit_exceeded`           |       409 | `LimitExceededError`         | No        | No; final refusal              |
 | `daily_limit_exceeded`           |       429 | `LimitExceededError`         | No        | No; final refusal              |
+| `spending_limit_exceeded`        |       429 | `LimitExceededError`         | No        | No; final refusal              |
 | `rate_limited`                   |       429 | `RateLimitedError`           | Yes       | May be unknown; resume same id |
 | `wallet_disabled`                |       409 | `AuthorizationError`         | No        | No; final refusal              |
 | `wallet_expired`                 |       409 | `AuthorizationError`         | No        | No; final refusal              |
@@ -80,6 +81,8 @@ This table is generated from `contracts/error-catalogue.json`. â€œOrder placed?â
 The typed subclasses group errors that partners commonly handle differently: `InsufficientBalanceError`, `PriceChangedError`, `OutOfStockError`, `LimitExceededError`, `RateLimitedError`, `IdempotencyConflictError`, `InvalidCredentialsError`, `ReplayDetectedError`, `AuthorizationError`, `ResourceNotFoundError`, `ValidationFailedError`, `DependencyUnavailableError`, and `EnrollmentRefusedError`. Other known and future codes use `AnisApiError`.
 
 `isRetryable` reports the published error catalogue. For orders, always use the `OrderResult.kind` recovery rule as well: an error marked retryable does not mean a new operation id is safe.
+
+`spending_limit_exceeded` (429) means the application's or wallet's spending cap for the current window is used up. Nothing was charged and the order is closed; after the signed `retryAfter` delay, place a new order with a new operation id and idempotency key.
 
 `signature_expired` and `invalid_content_digest` remain documented in the published catalogue for compatibility but are not currently emitted by the API.
 

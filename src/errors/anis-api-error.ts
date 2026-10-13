@@ -71,7 +71,7 @@ export class OutOfStockError extends AnisApiError {}
 export class IdempotencyConflictError extends AnisApiError {}
 /** A request-rate refusal; callers should honor Retry-After when present. */
 export class RateLimitedError extends AnisApiError {}
-/** A final refusal because an owner spending allowance is exhausted. */
+/** A final refusal because an owner or application spending allowance is used up; retryAfter, when present, says when a new order can succeed. */
 export class LimitExceededError extends AnisApiError {}
 /** A refusal because the signing credentials are not accepted. */
 export class InvalidCredentialsError extends AnisApiError {}
@@ -155,6 +155,7 @@ function errorTypeFor(code: string | undefined): typeof AnisApiError {
       return RateLimitedError;
     case 'owner_limit_exceeded':
     case 'daily_limit_exceeded':
+    case 'spending_limit_exceeded':
       return LimitExceededError;
     case 'invalid_credentials':
     case 'signature_expired':
