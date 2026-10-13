@@ -71,6 +71,8 @@ The SDK does not generate or persist operation ids: create a fresh UUID v4 for e
 
 `client.orders.get(operationId)` reads state only; it does not dispatch the order or return credentials. `client.orders.resume(walletId, operationId, request)` repeats the same signed POST. The SDK does not keep an order journal for you.
 
+A spending-cap refusal (`spending_limit_exceeded`, HTTP 429, `LimitExceededError`) is `notPlaced`: the order would have taken the application or wallet past its spending cap for the current window, so nothing was bought or charged. `retryAfter` is the number of seconds until the window ends (windows follow UTC). After it, place a new order with a new id; never resume the refused one.
+
 On `resume`, a replay-marked final refusal can be `notPlaced`; a fresh refusal that does not prove the earlier attempt stayed unsent remains `unknown`. The five temporary door refusals (`invalid_credentials`, `signature_expired`, `insufficient_scope`, `wallet_not_granted`, and `malformed_signed_request`) suggest waiting 60 seconds before resuming. Store any credentials from a first completed response immediately, before logging, formatting, or other work that can throw. A completed response with withheld codes is still a purchase: never order again to get the codes; contact support@anis.ly with the operation id.
 
 A `processing` result whose order status is `recoveryExhausted` may still complete. Recovery exhausted does not mean failed. Continue to resume the same operation id, allowing minutes between attempts, and contact support@anis.ly with the id.
