@@ -16,7 +16,7 @@ import { safeCounter, safeHistogram, safeLog, safeSpan, withSafeSpan } from '../
 import { MalformedResponseError } from '../errors/malformed-response-error.js';
 import { SigningKeyDocumentUnavailableError } from '../errors/signing-key-document-unavailable-error.js';
 
-const SDK_USER_AGENT = 'anis-partners-sdk-node/2.0.1';
+const SDK_USER_AGENT = 'anis-partners-sdk-node/2.1.0';
 
 /** Frozen request settings used by all route groups. */
 export interface TransportOptions extends ValidatedClientOptions {

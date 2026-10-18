@@ -2,6 +2,13 @@
 
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - Unreleased
+
+### Added
+
+- Catalogue subcategories expose `categoryType` as local, international, or unknown when absent or unrecognized.
+- Catalogue card categories expose `type` as local, international, or unknown when absent or unrecognized; owned cards, reveals, and orders are unchanged.
+
 ## [2.0.1] - 2026-10-13
 
 ### Fixed

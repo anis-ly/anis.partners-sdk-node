@@ -44,6 +44,8 @@ export interface CatalogueSubcategory {
   id: string;
   /** Parent category UUID. */
   categoryId: string;
+  /** Local, international, or unknown when the category kind is not supplied or recognized. */
+  categoryType: CatalogueCategoryType;
   /** Display name, if supplied. */
   name?: LocalizedText;
   /** Description, if supplied. */
@@ -60,10 +62,16 @@ export interface CatalogueSubcategory {
   disclaimer?: LocalizedText;
 }
 
+/** A category attached to a catalogue card. */
+export interface CatalogueCardCategory extends CardGroupSummary {
+  /** Local, international, or unknown when the category kind is not supplied or recognized. */
+  type: CatalogueCategoryType;
+}
+
 /** A purchasable card and the price this wallet pays for it. */
 export interface CatalogueCard {
   /** Subcategory logo URL. */ logo?: string;
-  /** Parent category summary. */ category?: CardGroupSummary;
+  /** Parent category summary. */ category?: CatalogueCardCategory;
   /** Card UUID used in an order. */
   id: string;
   /** Parent subcategory UUID. */
@@ -148,6 +156,7 @@ export function parseCatalogueSubcategory(json: unknown): CatalogueSubcategory {
   return {
     id: requiredUuid(object, 'id', 'CatalogueSubcategory'),
     categoryId: optionalUuid(object, 'categoryId', 'CatalogueSubcategory') ?? '00000000-0000-0000-0000-000000000000',
+    categoryType: parseCatalogueCategoryType(object.categoryType),
     isBestSelling: optionalBoolean(object, 'isBestSelling', 'CatalogueSubcategory') ?? false,
     displayOrder: optionalInteger(object, 'displayOrder', 'CatalogueSubcategory') ?? 0,
     available: optionalBoolean(object, 'available', 'CatalogueSubcategory') ?? false,
@@ -164,7 +173,7 @@ export function parseCatalogueCard(json: unknown): CatalogueCard {
   const name = parseOptionalLocalized(object, 'name', 'CatalogueCard');
   const faceValue = optionalString(object, 'faceValue', 'CatalogueCard');
   const logo = optionalString(object, 'logo', 'CatalogueCard');
-  const category = parseOptionalGroup(object, 'category');
+  const category = parseCatalogueCardCategory(object, 'category');
   const unitPrice = parseOptionalMoney(object, 'unitPrice');
   const businessPrice = parseOptionalMoney(object, 'businessPrice');
   const personalPrice = parseOptionalMoney(object, 'personalPrice');
@@ -223,4 +232,13 @@ function parseOptionalLocalized(
 function parseOptionalMoney(object: Record<string, unknown>, field: string): Money | undefined {
   const value = object[field];
   return value === undefined || value === null ? undefined : parseMoney(value);
+}
+
+function parseCatalogueCardCategory(object: Record<string, unknown>, field: string): CatalogueCardCategory | undefined {
+  const group = parseOptionalGroup(object, field);
+  if (group === undefined) {
+    return undefined;
+  }
+  const category = asObject(object[field], `CatalogueCard.${field}`);
+  return { ...group, type: parseCatalogueCategoryType(category.type) };
 }

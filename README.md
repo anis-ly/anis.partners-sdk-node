@@ -13,7 +13,7 @@ The `@anis-ly/partners` package calls the Anis Partner API with signed requests,
 npm install @anis-ly/partners@2
 ```
 
-Version 2.0.1 uses the `anis-response-v2` verification profile. 1.x is deprecated — upgrade.
+Version 2.1.0 uses the `anis-response-v2` verification profile. 1.x is deprecated — upgrade.
 
 The response signing-key document is cached for at most 5 minutes (default and maximum 300 seconds), and unknown key ids trigger at most one re-fetch every 30 seconds per client (key source instance). Anis publishes retired keys for 90 days after retirement and keeps compromised key ids in `revoked[]` for 90 days. See [security and key custody](docs/security.md) for the verification rules.
 
@@ -107,3 +107,5 @@ npm run generate:errors
 Use `client.access.suspendApplication(reason)` to suspend this application and `client.access.revokeKey(keyId, reason)` to revoke one of its keys. These signed stop calls require a trimmed reason of 1–500 characters and no scope. Resume requires Anis staff; revocation is irreversible.
 
 `client.ownedCards.list()`, `get()`, `reveal()`, and `revealInvoice()` use `/owned-cards` paths. A masked card has `soldCardId` and `operationId`; its `card: CardSummary` contains the name, face value, logo, subcategory, and category. Reveals and order `soldCards[]` share the full `RevealedCredential` shape. Wallet currency is `wallet.balance.currency`. Money amounts on the wire are strings with exactly three decimal places and uppercase three-letter currency codes. A wallet balance is negative (for example `-150.000`) while the wallet uses allowed debt; prices and totals are never negative. Catalogue quantity bounds are 1 and the platform limit of 100.
+
+Catalogue subcategories expose `categoryType` as `local`, `international`, or `unknown`. A catalogue card's optional `category` includes its `type` with the same values; absent or unrecognized values are `unknown`.

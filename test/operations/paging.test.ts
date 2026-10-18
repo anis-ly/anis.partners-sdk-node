@@ -95,7 +95,12 @@ describe('cursor paging', () => {
     const fake = await signedFetchDouble(() => {
       page += 1;
       const category = page === 1 ? '11111111-1111-4111-8111-111111111111' : '22222222-2222-4222-8222-222222222222';
-      return { body: JSON.stringify({ items: [{ id: category }], ...(page === 1 ? { nextCursor: 'next' } : {}) }) };
+      return {
+        body: JSON.stringify({
+          items: [{ id: category, categoryType: page === 1 ? 'local' : 'international' }],
+          ...(page === 1 ? { nextCursor: 'next' } : {}),
+        }),
+      };
     });
     const client = clientFor(fake.fetcher);
     const categoryIds: string[] = [];
@@ -105,12 +110,16 @@ describe('cursor paging', () => {
 
     page = 0;
     const subcategories: string[] = [];
+    const categoryTypes: string[] = [];
     for await (const item of client.catalogue.listSubcategories(
       wallet,
       categoryIds[0] ?? '11111111-1111-4111-8111-111111111111',
-    ))
+    )) {
       subcategories.push(item.id);
+      categoryTypes.push(item.categoryType);
+    }
     expect(subcategories).toHaveLength(2);
+    expect(categoryTypes).toEqual(['local', 'international']);
     expect(fake.requests[3]?.url.pathname).toContain(`/catalog/categories/${String(categoryIds[0])}/subcategories`);
   });
 });
