@@ -48,6 +48,7 @@ export type { Problem } from './models/problem.js';
 export type { ApplicationIdentity, OwnerAccount, PartnerIdentity, PartnerProfile, Wallet } from './models/wallets.js';
 export type {
   CatalogueCard,
+  CatalogueCardCategory,
   CatalogueCategory,
   CatalogueCategoryType,
   CatalogueSubcategory,

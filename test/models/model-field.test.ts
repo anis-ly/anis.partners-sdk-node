@@ -27,6 +27,40 @@ describe('model field compatibility', () => {
     expect(parseCatalogueSubcategory({ id: subcategoryId }).disclaimer).toBeUndefined();
   });
 
+  it('reads local and international subcategory category types', () => {
+    expect(parseCatalogueSubcategory({ id: subcategoryId, categoryType: 'local' }).categoryType).toBe('local');
+    expect(parseCatalogueSubcategory({ id: subcategoryId, categoryType: 'international' }).categoryType).toBe(
+      'international',
+    );
+  });
+
+  it('maps absent and unknown subcategory category types to unknown', () => {
+    expect(parseCatalogueSubcategory({ id: subcategoryId }).categoryType).toBe('unknown');
+    expect(parseCatalogueSubcategory({ id: subcategoryId, categoryType: 'galactic' }).categoryType).toBe('unknown');
+  });
+
+  it('reads catalogue card category type and keeps its identity fields', () => {
+    for (const type of ['local', 'international'] as const) {
+      const card = parseCatalogueCard({
+        id: cardId,
+        category: { id: subcategoryId, name: { en: 'Digital' }, type },
+      });
+
+      expect(card.category).toEqual({ id: subcategoryId, name: { en: 'Digital' }, type });
+    }
+  });
+
+  it('maps absent and unknown catalogue card category types to unknown', () => {
+    expect(parseCatalogueCard({ id: cardId, category: { id: subcategoryId, name: { en: 'Digital' } } }).category).toEqual({
+      id: subcategoryId,
+      name: { en: 'Digital' },
+      type: 'unknown',
+    });
+    expect(parseCatalogueCard({ id: cardId, category: { id: subcategoryId, type: 'galactic' } }).category?.type).toBe(
+      'unknown',
+    );
+  });
+
   it('maps an unknown catalogue category type to unknown', () => {
     expect(parseCatalogueCategoryType('regional')).toBe('unknown');
   });
