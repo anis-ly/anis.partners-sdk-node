@@ -51,7 +51,9 @@ describe('model field compatibility', () => {
   });
 
   it('maps absent and unknown catalogue card category types to unknown', () => {
-    expect(parseCatalogueCard({ id: cardId, category: { id: subcategoryId, name: { en: 'Digital' } } }).category).toEqual({
+    expect(
+      parseCatalogueCard({ id: cardId, category: { id: subcategoryId, name: { en: 'Digital' } } }).category,
+    ).toEqual({
       id: subcategoryId,
       name: { en: 'Digital' },
       type: 'unknown',

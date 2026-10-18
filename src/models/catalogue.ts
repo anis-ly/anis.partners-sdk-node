@@ -234,10 +234,7 @@ function parseOptionalMoney(object: Record<string, unknown>, field: string): Mon
   return value === undefined || value === null ? undefined : parseMoney(value);
 }
 
-function parseCatalogueCardCategory(
-  object: Record<string, unknown>,
-  field: string,
-): CatalogueCardCategory | undefined {
+function parseCatalogueCardCategory(object: Record<string, unknown>, field: string): CatalogueCardCategory | undefined {
   const group = parseOptionalGroup(object, field);
   if (group === undefined) {
     return undefined;
