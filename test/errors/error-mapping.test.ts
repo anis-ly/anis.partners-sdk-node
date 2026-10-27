@@ -29,6 +29,13 @@ type ErrorConstructor = new (
 ) => AnisApiError;
 
 const decisions: Record<string, { error: ErrorConstructor; outcome: OrderRefusalOutcome }> = {
+  meter_rejected: { error: AnisApiError, outcome: 'notPlaced' },
+  package_unavailable: { error: AnisApiError, outcome: 'notPlaced' },
+  direct_recharge_product_unavailable: { error: AnisApiError, outcome: 'notPlaced' },
+  amount_out_of_range: { error: AnisApiError, outcome: 'notPlaced' },
+  direct_recharge_not_suspended: { error: AnisApiError, outcome: 'notPlaced' },
+  webhook_endpoint_invalid: { error: AnisApiError, outcome: 'notPlaced' },
+  webhook_endpoint_unverified: { error: AnisApiError, outcome: 'notPlaced' },
   account_inactive: { error: AuthorizationError, outcome: 'notPlaced' },
   allowed_debt_consent_required: { error: AnisApiError, outcome: 'notPlaced' },
   binding_not_authorized: { error: AuthorizationError, outcome: 'notPlaced' },
@@ -48,6 +55,8 @@ const decisions: Record<string, { error: ErrorConstructor; outcome: OrderRefusal
   invitation_invalid: { error: EnrollmentRefusedError, outcome: 'notPlaced' },
   invoice_reveal_limit_exceeded: { error: AnisApiError, outcome: 'notPlaced' },
   key_not_revocable: { error: AnisApiError, outcome: 'notPlaced' },
+  network_not_removable: { error: AnisApiError, outcome: 'notPlaced' },
+  partner_network_limit_reached: { error: AnisApiError, outcome: 'notPlaced' },
   key_duplicate: { error: EnrollmentRefusedError, outcome: 'notPlaced' },
   key_proof_invalid: { error: EnrollmentRefusedError, outcome: 'notPlaced' },
   malformed_signed_request: { error: AnisApiError, outcome: 'unknown' },

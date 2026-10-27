@@ -6,7 +6,7 @@ Please do not open a public issue for a security problem. Email **support@anis.l
 
 ## Supported versions
 
-Security fixes target 2.1.0. 1.x is deprecated — upgrade.
+Security fixes target 2.2.0. 1.x is deprecated — upgrade.
 
 Version 2.x requires the `anis-response-v2` profile and rejects compromised, retired-after-signing, and not-yet-valid response keys. See [response verification](docs/security.md#response-profile-and-response-key-lifecycle) for the exact rules and failure reasons.
 

@@ -55,6 +55,13 @@ export class HttpSigningKeySource implements SigningKeySource {
   /** Creates an authority-scoped source; caching avoids a key-document request for every Partner response. */
   constructor(options: HttpSigningKeySourceOptions) {
     this.authority = new URL(options.authority);
+    // Plain HTTP is allowed only for the same loopback authorities validateClientOptions allows.
+    const hostname = this.authority.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    const loopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+    if (this.authority.protocol !== 'https:' && !(this.authority.protocol === 'http:' && loopback))
+      throw new TypeError(
+        'Signing-key authority must use HTTPS to protect the unsigned public key document; HTTP is allowed only for loopback testing.',
+      );
     this.cacheSeconds = options.cacheSeconds ?? MAX_SIGNING_KEY_CACHE_SECONDS;
     if (!Number.isFinite(this.cacheSeconds) || this.cacheSeconds < 0)
       throw new RangeError('Cache seconds must be non-negative.');

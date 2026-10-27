@@ -623,3 +623,18 @@ function errorType(error: unknown): string {
 function emptyBodyError(status: number): AnisApiError {
   return new AnisApiError({ status, code: 'internal_error', title: 'Empty body' }, status);
 }
+
+export {
+  MeterChargeOperations,
+  DirectRechargeProductOperations,
+  DirectRechargeOperations,
+  WebhookEndpointOperations,
+  WebhookEventOperations,
+} from './product-resources.js';
+export type {
+  MeterChargesOptions,
+  DirectRechargeProductsOptions,
+  DirectRechargeLocationsOptions,
+  DirectRechargesOptions,
+  WebhookEventsOptions,
+} from './product-resources.js';

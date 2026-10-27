@@ -5,6 +5,7 @@
 export const ERROR_CODES = [
   'account_inactive',
   'allowed_debt_consent_required',
+  'amount_out_of_range',
   'binding_not_authorized',
   'business_subscription_required',
   'card_not_found',
@@ -13,6 +14,8 @@ export const ERROR_CODES = [
   'currency_not_supported',
   'daily_limit_exceeded',
   'dependency_unavailable',
+  'direct_recharge_not_suspended',
+  'direct_recharge_product_unavailable',
   'idempotency_conflict',
   'insufficient_balance',
   'insufficient_scope',
@@ -25,8 +28,12 @@ export const ERROR_CODES = [
   'key_not_revocable',
   'key_proof_invalid',
   'malformed_signed_request',
+  'meter_rejected',
+  'network_not_removable',
   'operation_processing',
   'owner_limit_exceeded',
+  'package_unavailable',
+  'partner_network_limit_reached',
   'price_changed',
   'purchase_not_allowed',
   'quantity_unavailable',
@@ -42,6 +49,8 @@ export const ERROR_CODES = [
   'wallet_disabled',
   'wallet_expired',
   'wallet_not_granted',
+  'webhook_endpoint_invalid',
+  'webhook_endpoint_unverified',
 ] as const;
 
 /** A published error code, or unknown when Anis adds one this SDK has not seen yet. */

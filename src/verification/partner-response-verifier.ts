@@ -89,6 +89,8 @@ export class PartnerResponseVerifier {
     if (document.keys.some((candidate) => candidate.d !== undefined && candidate.d !== ''))
       fail('key_rejected', 'The published key document carries a private member.');
     if (!key) fail('unknown_key', `keyid ${parsed.keyId} is not published.`);
+    if (key.purpose !== undefined && key.purpose !== 'answer')
+      fail('key_rejected', 'The selected key must serve API answers.');
     if (key.status !== 'active' && key.status !== 'next' && key.status !== 'retired')
       fail('key_rejected', 'The published key has no supported lifecycle status.');
     const notBefore = Date.parse(key.notBefore ?? '');

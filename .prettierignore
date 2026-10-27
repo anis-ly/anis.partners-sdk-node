@@ -2,3 +2,6 @@ dist
 node_modules
 test/vectors
 contracts
+
+# Canonical fixture bytes are pinned by the owner checksum manifest.
+/test/models/fixtures/webhooks/

@@ -17,6 +17,12 @@ export interface PartnerRoute {
    * are not.
    */
   signedResponse: boolean;
+  /** Stable gateway route id, when published for this resource. */
+  routeId?: string;
+  /** Required scope; null denotes an admitted scope-free route. */
+  scope?: string | null;
+  /** Whether Runtime binds the request to the route wallet. */
+  walletBound?: boolean;
 }
 
 /**
@@ -84,6 +90,159 @@ export const PARTNER_ROUTES = [
   { method: 'POST', template: '/v1/enrollments/{invitationId}/proof', signedResponse: true },
   { method: 'GET', template: '/v1/enrollments/{invitationId}/status', signedResponse: true },
   { method: 'GET', template: '/.well-known/partner-signing-keys.json', signedResponse: false },
+  {
+    method: 'GET',
+    template: '/v1/wallets/{walletId}/meter-packages',
+    profile: 'SafeRead',
+    signedResponse: false,
+    routeId: 'partner.meter-packages.getMeterPackages',
+    scope: 'meter_charges:read',
+    walletBound: true,
+  },
+  {
+    method: 'GET',
+    template: '/v1/wallets/{walletId}/meter-charges',
+    profile: 'SafeRead',
+    signedResponse: false,
+    routeId: 'partner.meter-charges.getMeterCharges',
+    scope: 'meter_charges:read',
+    walletBound: true,
+  },
+  {
+    method: 'POST',
+    template: '/v1/wallets/{walletId}/meter-charges',
+    profile: 'OrderMutation',
+    signedResponse: true,
+    routeId: 'partner.meter-charges.create',
+    scope: 'meter_charges:create',
+    walletBound: true,
+  },
+  {
+    method: 'GET',
+    template: '/v1/meter-charges/{operationId}',
+    profile: 'SafeRead',
+    signedResponse: true,
+    routeId: 'partner.meter-charges.read',
+    scope: 'meter_charges:read',
+    walletBound: false,
+  },
+  {
+    method: 'GET',
+    template: '/v1/wallets/{walletId}/direct-recharge-products',
+    profile: 'SafeRead',
+    signedResponse: false,
+    routeId: 'partner.direct-recharge-products.getDirectRechargeProducts',
+    scope: 'direct_recharges:read',
+    walletBound: true,
+  },
+  {
+    method: 'GET',
+    template: '/v1/wallets/{walletId}/direct-recharge-products/{productId}',
+    profile: 'SafeRead',
+    signedResponse: false,
+    routeId: 'partner.direct-recharge-products.read',
+    scope: 'direct_recharges:read',
+    walletBound: true,
+  },
+  {
+    method: 'GET',
+    template: '/v1/wallets/{walletId}/direct-recharge-products/{productId}/locations',
+    profile: 'SafeRead',
+    signedResponse: false,
+    routeId: 'partner.direct-recharge-products.locations.getDirectRechargeProductLocations',
+    scope: 'direct_recharges:read',
+    walletBound: true,
+  },
+  {
+    method: 'GET',
+    template: '/v1/wallets/{walletId}/direct-recharge-products/{productId}/quote',
+    profile: 'SafeRead',
+    signedResponse: false,
+    routeId: 'partner.direct-recharge-products.quote',
+    scope: 'direct_recharges:read',
+    walletBound: true,
+  },
+  {
+    method: 'GET',
+    template: '/v1/wallets/{walletId}/direct-recharges',
+    profile: 'SafeRead',
+    signedResponse: false,
+    routeId: 'partner.direct-recharges.getDirectRecharges',
+    scope: 'direct_recharges:read',
+    walletBound: true,
+  },
+  {
+    method: 'POST',
+    template: '/v1/wallets/{walletId}/direct-recharges',
+    profile: 'OrderMutation',
+    signedResponse: true,
+    routeId: 'partner.direct-recharges.create',
+    scope: 'direct_recharges:create',
+    walletBound: true,
+  },
+  {
+    method: 'GET',
+    template: '/v1/direct-recharges/{operationId}',
+    profile: 'SafeRead',
+    signedResponse: true,
+    routeId: 'partner.direct-recharges.read',
+    scope: 'direct_recharges:read',
+    walletBound: false,
+  },
+  {
+    method: 'PATCH',
+    template: '/v1/direct-recharges/{operationId}/recipient',
+    profile: 'BodylessNonceMutation',
+    signedResponse: true,
+    routeId: 'partner.direct-recharges.recipient.update',
+    scope: 'direct_recharges:create',
+    walletBound: false,
+  },
+  {
+    method: 'GET',
+    template: '/v1/webhook-endpoint',
+    profile: 'SafeRead',
+    signedResponse: false,
+    routeId: 'partner.webhook-endpoint.read',
+    scope: null,
+    walletBound: false,
+  },
+  {
+    method: 'PUT',
+    template: '/v1/webhook-endpoint',
+    profile: 'BodylessNonceMutation',
+    signedResponse: true,
+    routeId: 'partner.webhook-endpoint.update',
+    scope: null,
+    walletBound: false,
+  },
+  {
+    method: 'POST',
+    template: '/v1/webhook-endpoint/test',
+    profile: 'BodylessNonceMutation',
+    signedResponse: true,
+    routeId: 'partner.webhook-endpoint.test',
+    scope: null,
+    walletBound: false,
+  },
+  {
+    method: 'GET',
+    template: '/v1/webhook-events',
+    profile: 'SafeRead',
+    signedResponse: false,
+    routeId: 'partner.webhook-events.getWebhookEvents',
+    scope: null,
+    walletBound: false,
+  },
+  {
+    method: 'POST',
+    template: '/v1/webhook-events/{eventId}/redeliver',
+    profile: 'BodylessNonceMutation',
+    signedResponse: true,
+    routeId: 'partner.webhook-events.redeliver',
+    scope: null,
+    walletBound: false,
+  },
 ] as const satisfies readonly PartnerRoute[];
 
 /**

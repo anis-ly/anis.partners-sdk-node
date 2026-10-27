@@ -36,47 +36,54 @@ Order refusals are values: `notPlaced` carries the typed `refusal`; unresolved r
 
 This table is generated from `contracts/error-catalogue.json`. “Order placed?” describes the safe order action: an uncertain answer must be resumed with the same id.
 
-| Code                             |      HTTP | Typed error                  | Retryable | Order placed?                  |
-| -------------------------------- | --------: | ---------------------------- | --------- | ------------------------------ |
-| `invalid_credentials`            |       401 | `InvalidCredentialsError`    | No        | May be unknown; resume same id |
-| `signature_expired`              |       401 | `InvalidCredentialsError`    | Yes       | May be unknown; resume same id |
-| `invalid_content_digest`         |       400 | `AnisApiError`               | No        | No; final refusal              |
-| `malformed_signed_request`       |       400 | `AnisApiError`               | No        | May be unknown; resume same id |
-| `replay_detected`                |       409 | `ReplayDetectedError`        | Yes       | May be unknown; resume same id |
-| `source_ip_not_allowed`          |       403 | `AuthorizationError`         | No        | No; final refusal              |
-| `insufficient_scope`             |       403 | `AuthorizationError`         | No        | May be unknown; resume same id |
-| `binding_not_authorized`         |       403 | `AuthorizationError`         | No        | No; final refusal              |
-| `resource_not_found`             |       404 | `ResourceNotFoundError`      | No        | No; final refusal              |
-| `card_not_found`                 |       404 | `ResourceNotFoundError`      | No        | No; final refusal              |
-| `wallet_not_granted`             |       404 | `ResourceNotFoundError`      | No        | May be unknown; resume same id |
-| `validation_failed`              |       422 | `ValidationFailedError`      | No        | No; final refusal              |
-| `idempotency_conflict`           |       409 | `IdempotencyConflictError`   | No        | No; final refusal              |
-| `operation_processing`           |       202 | `AnisApiError`               | Yes       | May be unknown; resume same id |
-| `allowed_debt_consent_required`  |       402 | `AnisApiError`               | No        | No; final refusal              |
-| `insufficient_balance`           |       409 | `InsufficientBalanceError`   | No        | No; final refusal              |
-| `purchase_not_allowed`           | 403 / 409 | `AuthorizationError`         | No        | No; final refusal              |
-| `owner_limit_exceeded`           |       409 | `LimitExceededError`         | No        | No; final refusal              |
-| `daily_limit_exceeded`           |       429 | `LimitExceededError`         | No        | No; final refusal              |
-| `spending_limit_exceeded`        |       429 | `LimitExceededError`         | No        | No; final refusal              |
-| `rate_limited`                   |       429 | `RateLimitedError`           | Yes       | May be unknown; resume same id |
-| `wallet_disabled`                |       409 | `AuthorizationError`         | No        | No; final refusal              |
-| `wallet_expired`                 |       409 | `AuthorizationError`         | No        | No; final refusal              |
-| `business_subscription_required` |       409 | `AuthorizationError`         | No        | No; final refusal              |
-| `account_inactive`               |       403 | `AuthorizationError`         | No        | No; final refusal              |
-| `currency_not_supported`         |       422 | `ValidationFailedError`      | No        | No; final refusal              |
-| `card_unavailable`               |       409 | `OutOfStockError`            | No        | No; final refusal              |
-| `quantity_unavailable`           |       409 | `OutOfStockError`            | No        | No; final refusal              |
-| `price_changed`                  |       409 | `PriceChangedError`          | No        | No; final refusal              |
-| `reveal_not_allowed`             |       409 | `AuthorizationError`         | No        | No; final refusal              |
-| `invoice_reveal_limit_exceeded`  |       409 | `AnisApiError`               | No        | No; final refusal              |
-| `invitation_invalid`             |       401 | `EnrollmentRefusedError`     | No        | No; final refusal              |
-| `challenge_expired`              |       409 | `EnrollmentRefusedError`     | No        | No; final refusal              |
-| `key_proof_invalid`              |       422 | `EnrollmentRefusedError`     | No        | No; final refusal              |
-| `key_not_revocable`              |       409 | `AnisApiError`               | No        | No; final refusal              |
-| `key_duplicate`                  |       409 | `EnrollmentRefusedError`     | No        | No; final refusal              |
-| `dependency_unavailable`         |       503 | `DependencyUnavailableError` | Yes       | May be unknown; resume same id |
-| `request_timeout`                |       504 | `DependencyUnavailableError` | Yes       | May be unknown; resume same id |
-| `internal_error`                 |       500 | `DependencyUnavailableError` | Yes       | May be unknown; resume same id |
+| Code                                  |      HTTP | Typed error                  | Retryable | Order placed?                                                 |
+| ------------------------------------- | --------: | ---------------------------- | --------- | ------------------------------------------------------------- |
+| `invalid_credentials`                 |       401 | `InvalidCredentialsError`    | No        | May be unknown; resume same id                                |
+| `signature_expired`                   |       401 | `InvalidCredentialsError`    | Yes       | May be unknown; resume same id                                |
+| `invalid_content_digest`              |       400 | `AnisApiError`               | No        | No; final refusal                                             |
+| `malformed_signed_request`            |       400 | `AnisApiError`               | No        | May be unknown; resume same id                                |
+| `replay_detected`                     |       409 | `ReplayDetectedError`        | Yes       | May be unknown; resume same id                                |
+| `source_ip_not_allowed`               |       403 | `AuthorizationError`         | No        | No; final refusal                                             |
+| `insufficient_scope`                  |       403 | `AuthorizationError`         | No        | May be unknown; resume same id                                |
+| `binding_not_authorized`              |       403 | `AuthorizationError`         | No        | No; final refusal                                             |
+| `resource_not_found`                  |       404 | `ResourceNotFoundError`      | No        | No; final refusal                                             |
+| `card_not_found`                      |       404 | `ResourceNotFoundError`      | No        | No; final refusal                                             |
+| `wallet_not_granted`                  |       404 | `ResourceNotFoundError`      | No        | May be unknown; resume same id                                |
+| `validation_failed`                   |       422 | `ValidationFailedError`      | No        | No; final refusal                                             |
+| `idempotency_conflict`                |       409 | `IdempotencyConflictError`   | No        | No for orders; unknown for meter charges and direct recharges |
+| `operation_processing`                |       202 | `AnisApiError`               | Yes       | May be unknown; resume same id                                |
+| `allowed_debt_consent_required`       |       402 | `AnisApiError`               | No        | No; final refusal                                             |
+| `insufficient_balance`                |       409 | `InsufficientBalanceError`   | No        | No; final refusal                                             |
+| `purchase_not_allowed`                | 403 / 409 | `AuthorizationError`         | No        | No; final refusal                                             |
+| `owner_limit_exceeded`                |       409 | `LimitExceededError`         | No        | No; final refusal                                             |
+| `daily_limit_exceeded`                |       429 | `LimitExceededError`         | No        | No; final refusal                                             |
+| `spending_limit_exceeded`             |       429 | `LimitExceededError`         | No        | No; final refusal                                             |
+| `rate_limited`                        |       429 | `RateLimitedError`           | Yes       | May be unknown; resume same id                                |
+| `wallet_disabled`                     |       409 | `AuthorizationError`         | No        | No; final refusal                                             |
+| `wallet_expired`                      |       409 | `AuthorizationError`         | No        | No; final refusal                                             |
+| `business_subscription_required`      |       409 | `AuthorizationError`         | No        | No; final refusal                                             |
+| `account_inactive`                    |       403 | `AuthorizationError`         | No        | No; final refusal                                             |
+| `currency_not_supported`              |       422 | `ValidationFailedError`      | No        | No; final refusal                                             |
+| `card_unavailable`                    |       409 | `OutOfStockError`            | No        | No; final refusal                                             |
+| `quantity_unavailable`                |       409 | `OutOfStockError`            | No        | No; final refusal                                             |
+| `price_changed`                       |       409 | `PriceChangedError`          | No        | No; final refusal                                             |
+| `reveal_not_allowed`                  |       409 | `AuthorizationError`         | No        | No; final refusal                                             |
+| `invoice_reveal_limit_exceeded`       |       409 | `AnisApiError`               | No        | No; final refusal                                             |
+| `invitation_invalid`                  |       401 | `EnrollmentRefusedError`     | No        | No; final refusal                                             |
+| `challenge_expired`                   |       409 | `EnrollmentRefusedError`     | No        | No; final refusal                                             |
+| `key_proof_invalid`                   |       422 | `EnrollmentRefusedError`     | No        | No; final refusal                                             |
+| `key_not_revocable`                   |       409 | `AnisApiError`               | No        | No; final refusal                                             |
+| `key_duplicate`                       |       409 | `EnrollmentRefusedError`     | No        | No; final refusal                                             |
+| `meter_rejected`                      |       422 | `AnisApiError`               | No        | No; final refusal                                             |
+| `package_unavailable`                 |       409 | `AnisApiError`               | No        | No; final refusal                                             |
+| `direct_recharge_product_unavailable` |       409 | `AnisApiError`               | No        | No; final refusal                                             |
+| `amount_out_of_range`                 |       422 | `AnisApiError`               | No        | No; final refusal                                             |
+| `direct_recharge_not_suspended`       |       409 | `AnisApiError`               | No        | Recipient change refused; read the direct recharge            |
+| `webhook_endpoint_invalid`            |       422 | `AnisApiError`               | No        | Not a purchase                                                |
+| `webhook_endpoint_unverified`         |       409 | `AnisApiError`               | No        | Not a purchase                                                |
+| `dependency_unavailable`              |       503 | `DependencyUnavailableError` | Yes       | May be unknown; resume same id                                |
+| `request_timeout`                     |       504 | `DependencyUnavailableError` | Yes       | May be unknown; resume same id                                |
+| `internal_error`                      |       500 | `DependencyUnavailableError` | Yes       | May be unknown; resume same id                                |
 
 The typed subclasses group errors that partners commonly handle differently: `InsufficientBalanceError`, `PriceChangedError`, `OutOfStockError`, `LimitExceededError`, `RateLimitedError`, `IdempotencyConflictError`, `InvalidCredentialsError`, `ReplayDetectedError`, `AuthorizationError`, `ResourceNotFoundError`, `ValidationFailedError`, `DependencyUnavailableError`, and `EnrollmentRefusedError`. Other known and future codes use `AnisApiError`.
 
@@ -84,7 +91,31 @@ The typed subclasses group errors that partners commonly handle differently: `In
 
 `spending_limit_exceeded` (429) means the application's or wallet's spending cap for the current window is used up. Nothing was charged and the order is closed; after the signed `retryAfter` delay, place a new order with a new operation id and idempotency key.
 
+On a meter charge or direct recharge, `idempotency_conflict` returns `unknown` from `create` and `resume`: the id may already be accepted and charged, so read the operation by its id (`get`) before any new attempt.
+
 `signature_expired` and `invalid_content_digest` remain documented in the published catalogue for compatibility but are not currently emitted by the API.
+
+## Field errors
+
+A `validation_failed` refusal (HTTP 422) can name the request fields that were wrong. For a direct recharge recipient, the details are in `error.problem.extensions`, for example `{ "fields": { "recipient_number": "Invalid number" } }`. The raw `extensions` object is kept exactly as received, including members this SDK version does not know. Narrow it before reading, and never branch on the localized title or detail text.
+
+```ts
+import { AnisApiError } from '@anis-ly/partners';
+
+export function fieldErrors(error: AnisApiError): Record<string, string> {
+  const extensions: unknown = error.problem.extensions;
+  if (typeof extensions !== 'object' || extensions === null || !('fields' in extensions)) return {};
+  const fields: unknown = extensions.fields;
+  if (typeof fields !== 'object' || fields === null) return {};
+  return Object.fromEntries(
+    Object.entries(fields).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  );
+}
+```
+
+Log the field names, not the messages: a message can echo what the recipient typed. Do not log a whole problem object for a recipient refusal.
+
+Recipient updates, endpoint changes, test notifications and redelivery are signed changes, not purchases. Their refusals are exceptions to handle, and none of them is retried for you.
 
 ## Response verification failures
 

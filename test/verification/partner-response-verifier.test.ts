@@ -143,6 +143,29 @@ describe('partner response verifier', () => {
   });
 });
 
+describe('response key purpose', () => {
+  it.each([undefined, 'answer', 'webhook', 'future', ''])(
+    'allows only legacy or answer purpose (%s)',
+    async (purpose) => {
+      const keys: SigningKeySet = {
+        keys: fixture.signingKeys.keys.map((key) => ({
+          ...key,
+          ...(purpose === undefined ? {} : { purpose }),
+        })),
+      };
+      const refresh = vi.fn(() => Promise.resolve(keys));
+      const verifier = new PartnerResponseVerifier(
+        { get: () => Promise.resolve(keys), refresh },
+        { now: () => new Date(created * 1000) },
+      );
+      if (purpose === undefined || purpose === 'answer')
+        await expect(verifier.verify(response)).resolves.toBeUndefined();
+      else await expect(verifier.verify(response)).rejects.toMatchObject({ failure: 'key_rejected' });
+      expect(refresh).not.toHaveBeenCalled();
+    },
+  );
+});
+
 describe('v2 response profile and key lifecycle', () => {
   const verify = (answer: VerifiableResponse, keys: SigningKeySet = fixture.signingKeys) =>
     new PartnerResponseVerifier(

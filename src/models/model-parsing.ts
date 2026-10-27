@@ -93,3 +93,71 @@ export function optionalBoolean(object: JsonObject, field: string, label: string
   }
   return value;
 }
+
+/** Reads a required valid timestamp without inventing a missing time. */
+export function requiredTimestamp(object: JsonObject, field: string, label: string): Date {
+  const value = optionalTimestamp(object, field, label);
+  if (value === undefined) throw new TypeError(`${label}.${field} is required.`);
+  return value;
+}
+
+/** Reads a required integer. */
+export function requiredInteger(object: JsonObject, field: string, label: string): number {
+  const value = optionalInteger(object, field, label);
+  if (value === undefined) throw new TypeError(`${label}.${field} is required.`);
+  return value;
+}
+
+/** Reads a required boolean. */
+export function requiredBoolean(object: JsonObject, field: string, label: string): boolean {
+  const value = optionalBoolean(object, field, label);
+  if (value === undefined) throw new TypeError(`${label}.${field} is required.`);
+  return value;
+}
+
+/** Parses every member of a required array. */
+export function requiredArray<T>(object: JsonObject, field: string, label: string, parse: (value: unknown) => T): T[] {
+  const value = object[field];
+  if (!Array.isArray(value)) throw new TypeError(`${label}.${field} must be an array.`);
+  return value.map(parse);
+}
+
+/** Parses an optional nested value without filling absent members. */
+export function optionalParsed<T>(value: unknown, parse: (value: unknown) => T): T | undefined {
+  return value === undefined || value === null ? undefined : parse(value);
+}
+
+/** Matches only published spellings, keeping future values unresolved. */
+export function knownValue<T extends string>(value: unknown, known: readonly T[]): T | 'unknown' {
+  return known.find((entry) => entry === value) ?? 'unknown';
+}
+
+/** Reads a required string-or-null member, preserving explicit nulls. */
+export function nullableString(object: JsonObject, field: string, label: string): string | null {
+  return object[field] === null ? null : requiredString(object, field, label);
+}
+
+/** Reads a required integer-or-null member, preserving explicit nulls. */
+export function nullableInteger(object: JsonObject, field: string, label: string): number | null {
+  return object[field] === null ? null : requiredInteger(object, field, label);
+}
+
+/** Reads a required timestamp-or-null member, preserving explicit nulls. */
+export function nullableTimestamp(object: JsonObject, field: string, label: string): Date | null {
+  return object[field] === null ? null : requiredTimestamp(object, field, label);
+}
+
+/** Validates the three-member product acknowledgement independently of full reads. */
+export function parseProductAccepted<T extends 'meterCharge' | 'directRecharge'>(
+  value: unknown,
+  operationType: T,
+): {
+  operationId: string;
+  operationType: T;
+  status: 'processing';
+} {
+  const object = asObject(value, 'ProductAccepted');
+  if (Object.keys(object).length !== 3 || object.operationType !== operationType || object.status !== 'processing')
+    throw new TypeError('Invalid product processing acknowledgement.');
+  return { operationId: requiredUuid(object, 'operationId', 'ProductAccepted'), operationType, status: 'processing' };
+}

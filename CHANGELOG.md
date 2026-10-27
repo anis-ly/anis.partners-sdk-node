@@ -2,6 +2,28 @@
 
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] - 2026-10-27
+
+### Added
+
+- Charge electricity meters and read receipts, tokens and refunds with safe recovery after an interrupted request.
+- Quote Direct recharge, follow direct recharges and correct recipient details while a direct recharge is paused. Recipient corrections return `DirectRechargeProcessing`, the same type a 202 create answers, with the signed acknowledgement in `accepted` and a validated `location`; read the operation or wait for its webhook to observe the correction.
+- Manage a webhook endpoint and request delivery again when a notification was missed.
+- Verify notifications before reading their contents and keep recipient field errors available to the integration.
+
+### Changed
+
+- For meter charges and direct recharges, an `idempotency_conflict` on `create` or `resume` is now `unknown` instead of `notPlaced`: the id may already be accepted and charged. Read the operation by its id before any new attempt.
+- Reading a meter charge or direct recharge by id can raise the recorded refusal (HTTP 409 or 422, `isReplayed` true) as a typed `AnisApiError`; this is documented.
+- A failed meter charge whose refund is still pending stays `processing`; it becomes `final` when the refund is `refunded` or `notCharged`.
+- `MeterFailure.message`, `MeterPackage.logo`, and the `name` of a recipient field or stored recipient value are optional, as in the published contract.
+- Documentation states that a webhook endpoint host name must contain a dot (`webhook_endpoint_invalid` otherwise).
+- Documentation and examples use the lowercase recipient keys (`recipient_number`, `recipient_name`) and the plain words direct recharge and electricity company.
+
+### Security
+
+- Response and webhook verification keep key purposes apart: an answer key never verifies a webhook and a webhook key never verifies an answer.
+
 ## [2.1.0] - 2026-10-18
 
 ### Added

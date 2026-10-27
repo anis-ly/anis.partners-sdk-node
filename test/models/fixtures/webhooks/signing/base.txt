@@ -1,0 +1,7 @@
+"@method": POST
+"@target-uri": https://pos.example.ly/hooks/anis
+"content-digest": sha-256=:5eOPolCTWCigpjkrmQotTNZ5SIRvsvUX2Bm6HpP3DJQ=:
+"webhook-id": 4bceba8e-55d1-59ec-b560-6c1e08f2ae3a
+"anis-webhook-attempt": 1
+"anis-application-id": 9b2d1241-413e-4ae8-ae32-b15c58dbe101
+"@signature-params": ("@method" "@target-uri" "content-digest" "webhook-id" "anis-webhook-attempt" "anis-application-id");created=1792484040;expires=1792484340;keyid="partner-webhook-signing/0123456789abcdef0123456789abcdef";alg="ecdsa-p256-sha256";tag="anis-partner-webhook-v1"

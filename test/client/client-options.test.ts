@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { AnisPartnersClient } from '../../src/client.js';
 import { validateClientOptions } from '../../src/client-options.js';
+import { KeyedSigner } from '../../src/signing/keyed-signer.js';
 
 describe('validateClientOptions', () => {
   it('applies the SDK defaults', () => {
@@ -54,6 +56,15 @@ describe('validateClientOptions', () => {
     expect(validateClientOptions({ authority: 'http://127.0.0.1:7000' }).authority.hostname).toBe('127.0.0.1');
     expect(validateClientOptions({ authority: 'http://[::1]:7000' }).authority.hostname).toBe('[::1]');
   });
+
+  it.each(['http://localhost:7000', 'http://127.0.0.1:7000', 'http://[::1]:7000'])(
+    'creates a client for the loopback authority %s',
+    (authority) => {
+      const keyId = 'a9cb2df1-5a48-449b-8c8a-1b20a5b7f433';
+      const signer = new KeyedSigner({ sign: () => Promise.resolve(new Uint8Array(64)) }, keyId);
+      expect(() => AnisPartnersClient.create({ options: { authority }, signer })).not.toThrow();
+    },
+  );
 
   it('allows uppercase localhost and refuses nearby non-loopback addresses', () => {
     expect(validateClientOptions({ authority: 'http://LOCALHOST:7000' }).authority.hostname).toBe('localhost');

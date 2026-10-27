@@ -42,3 +42,18 @@ describe('signing key lifecycle document', () => {
     expect(() => parseSigningKeySet('{"keys":[],"revoked":[{"kid":"bad","compromisedAt":7}]}')).toThrow(TypeError);
   });
 });
+
+describe('published signing key purpose', () => {
+  it.each(['answer', 'webhook', 'future-purpose'])(
+    'preserves purpose %s without narrowing future values',
+    (purpose) => {
+      expect(parseSigningKeySet(JSON.stringify({ keys: [{ purpose }] })).keys[0]).toEqual({ purpose });
+    },
+  );
+  it('accepts absent purpose for existing response documents', () => {
+    expect(parseSigningKeySet('{"keys":[{}]}').keys[0]).not.toHaveProperty('purpose');
+  });
+  it.each([null, 7, {}, []])('rejects a non-string purpose %j', (purpose) => {
+    expect(() => parseSigningKeySet(JSON.stringify({ keys: [{ purpose }] }))).toThrow(TypeError);
+  });
+});

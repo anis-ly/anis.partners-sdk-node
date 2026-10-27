@@ -17,6 +17,7 @@ export interface PartnerJwk {
 
 /** Response verification key with its published signing lifecycle. */
 export interface PublishedSigningKey extends PartnerJwk {
+  /** Signing purpose: answer for API responses, webhook for deliveries; legacy answer documents may omit it. */ purpose?: string;
   /** Published signing lifecycle state. */ status?: 'active' | 'next' | 'retired';
   /** Earliest signing instant in RFC3339 form. */ notBefore?: string;
   /** Instant the key stopped signing. */ retiredAt?: string;
@@ -61,8 +62,8 @@ export function parseSigningKeySet(json: string): SigningKeySet {
   };
 }
 
-type JwkStringMember = 'kty' | 'crv' | 'x' | 'y' | 'kid' | 'use' | 'alg' | 'd';
-const jwkStringMembers: readonly JwkStringMember[] = ['kty', 'crv', 'x', 'y', 'kid', 'use', 'alg', 'd'];
+type JwkStringMember = 'kty' | 'crv' | 'x' | 'y' | 'kid' | 'use' | 'alg' | 'd' | 'purpose';
+const jwkStringMembers: readonly JwkStringMember[] = ['kty', 'crv', 'x', 'y', 'kid', 'use', 'alg', 'd', 'purpose'];
 
 function parsePartnerJwk(value: unknown): PublishedSigningKey {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
