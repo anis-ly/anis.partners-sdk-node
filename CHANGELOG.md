@@ -2,7 +2,7 @@
 
 Versions follow [Semantic Versioning](https://semver.org/).
 
-## [2.2.0] - <date placeholder>
+## [2.2.0] - 2026-10-27
 
 ### Added
 
