@@ -35,6 +35,46 @@ describe('console sample commands', () => {
     expect(output.join('\n')).not.toMatch(/signature: [A-Za-z0-9_-]{12}/);
   });
 
+  it('shows a signed webhook test request and sends nothing under dry run', async () => {
+    const output: string[] = [];
+    const fetcher = vi.fn<typeof globalThis.fetch>();
+    await expect(
+      runSampleCommand('webhook-test', ['--dry-run'], settings, {
+        stdout: (text) => output.push(text),
+        fetcher,
+        signer,
+      }),
+    ).rejects.toMatchObject({ name: 'DryRunStop' });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(output.join('\n')).toContain('POST https://partners.example/v1/webhook-endpoint/test');
+  });
+
+  it('removes a product intent when a dry run stops before sending', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'anis-products-'));
+    const output: string[] = [];
+    const fetcher = vi.fn<typeof globalThis.fetch>();
+    const wallet = '2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26';
+    const product = '7a1c3e5f-2b4d-4f68-8a0c-9e1b3d5f7a2c';
+    try {
+      await expect(
+        runSampleCommand(
+          'recharge-quote',
+          [wallet, product, '1500.000', '--dry-run'],
+          { ...settings, ordersFolder: folder },
+          {
+            stdout: (text) => output.push(text),
+            fetcher,
+            signer,
+          },
+        ),
+      ).rejects.toMatchObject({ name: 'DryRunStop' });
+      expect(output.join('\n')).toContain('amountIn=fx');
+      expect(await readdir(folder)).toEqual([]);
+    } finally {
+      await rm(folder, { recursive: true, force: true });
+    }
+  });
+
   it('prints the proof state after the key id and safety code during enrollment', async () => {
     const output: string[] = [];
     const invitationId = 'a9cb2df1-5a48-449b-8c8a-1b20a5b7f433';

@@ -18,6 +18,31 @@ const response = (): Response =>
   new Response(document, { status: 200, headers: { 'Content-Type': 'application/json' } });
 
 describe('HTTP signing-key source', () => {
+  it.each(['http://keys.example.ly', 'http://localhost.example.ly', 'http://10.0.0.1', 'ftp://keys.example.ly'])(
+    'rejects insecure key authority %s before fetching',
+    (authority) => {
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      expect(() => new HttpSigningKeySource({ authority, fetch })).toThrow(/must use HTTPS/);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['http://localhost:7000', 'http://127.0.0.1:7000', 'http://[::1]:7000'])(
+    'accepts loopback key authority %s for local testing',
+    async (authority) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
+      const source = new HttpSigningKeySource({ authority, fetch });
+      await source.get();
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
+  it('accepts HTTPS URL objects and does not retain a mutable caller URL', async () => {
+    const authority = new URL('https://keys.example.ly');
+    const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
+    const source = new HttpSigningKeySource({ authority, fetch });
+    authority.protocol = 'http:';
+    await source.get();
+    expect(fetch.mock.calls[0]?.[0]).toEqual(new URL('https://keys.example.ly/.well-known/partner-signing-keys.json'));
+  });
   it('refuses a cache lifetime longer than five minutes', () => {
     expect(() => new HttpSigningKeySource({ authority: 'https://partners.anis.ly', cacheSeconds: 301 })).toThrow(
       RangeError,
@@ -27,7 +52,7 @@ describe('HTTP signing-key source', () => {
   it('keeps a fetched document for five minutes by default', async () => {
     vi.useFakeTimers();
     try {
-      const fetch = vi.fn(() => Promise.resolve(response()));
+      const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
       const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch });
       await source.get();
       await vi.advanceTimersByTimeAsync(299_999);
@@ -49,7 +74,7 @@ describe('HTTP signing-key source', () => {
         get: () => Promise.resolve(stored),
         set: () => Promise.resolve(),
       };
-      const fetch = vi.fn(() => Promise.resolve(response()));
+      const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
       const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch, documentCache: cache });
       await source.get();
       expect(fetch).not.toHaveBeenCalled();
@@ -72,7 +97,7 @@ describe('HTTP signing-key source', () => {
         get: () => Promise.resolve(stored),
         set: () => Promise.resolve(),
       };
-      const fetch = vi.fn(() => Promise.resolve(response()));
+      const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
       const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch, documentCache: cache });
 
       await source.get();
@@ -183,7 +208,7 @@ describe('HTTP signing-key source', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
   it('uses the cached document within its TTL', async () => {
-    const fetch = vi.fn(() => Promise.resolve(response()));
+    const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
     const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch });
     await source.get();
     await source.get();
@@ -220,7 +245,7 @@ describe('HTTP signing-key source', () => {
   it('fetches again after TTL expiry', async () => {
     vi.useFakeTimers();
     try {
-      const fetch = vi.fn(() => Promise.resolve(response()));
+      const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
       const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', cacheSeconds: 1, fetch });
       await source.get();
       await vi.advanceTimersByTimeAsync(1001);
@@ -231,7 +256,7 @@ describe('HTTP signing-key source', () => {
     }
   });
   it('fetches when the first unknown-key refresh is requested', async () => {
-    const fetch = vi.fn(() => Promise.resolve(response()));
+    const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
     const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch });
     await source.get();
     await source.refresh();
@@ -331,7 +356,7 @@ describe('HTTP signing-key source', () => {
       get: () => Promise.reject(new Error('cache unavailable')),
       set: () => Promise.resolve(),
     };
-    const fetch = vi.fn(() => Promise.resolve(response()));
+    const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
     await new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch, documentCache: cache }).get();
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -341,7 +366,7 @@ describe('HTTP signing-key source', () => {
       get: () => Promise.resolve(undefined),
       set: () => Promise.reject(new Error('cache unavailable')),
     };
-    const fetch = vi.fn(() => Promise.resolve(response()));
+    const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
     await expect(
       new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch, documentCache: cache }).get(),
     ).resolves.toMatchObject({ keys: [{ kid: 'active' }] });
@@ -417,7 +442,7 @@ describe('HTTP signing-key source', () => {
         get: () => new Promise<string | undefined>(() => undefined),
         set: () => Promise.resolve(),
       };
-      const fetch = vi.fn(() => Promise.resolve(response()));
+      const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
       const result = new HttpSigningKeySource({
         authority: 'https://partners.anis.ly',
         fetch,
@@ -438,7 +463,7 @@ describe('HTTP signing-key source', () => {
         get: () => Promise.resolve(undefined),
         set: () => new Promise<void>(() => undefined),
       };
-      const fetch = vi.fn(() => Promise.resolve(response()));
+      const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
       const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch, documentCache: cache });
       const result = source.get();
       await vi.advanceTimersByTimeAsync(2_000);
@@ -461,7 +486,7 @@ describe('HTTP signing-key source', () => {
         },
         set: () => Promise.resolve(),
       };
-      const fetch = vi.fn(() => Promise.resolve(response()));
+      const fetch = vi.fn<typeof globalThis.fetch>(() => Promise.resolve(response()));
       const source = new HttpSigningKeySource({ authority: 'https://partners.anis.ly', fetch, documentCache: cache });
       const controller = new AbortController();
       const first = source.get({ signal: controller.signal });
@@ -477,5 +502,30 @@ describe('HTTP signing-key source', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('HTTP signing-key purpose preservation', () => {
+  it('preserves purpose through HTTP, memory, refresh and shared-cache round trips', async () => {
+    const keyDocument = JSON.stringify({ keys: [{ kid: 'webhook/exact', purpose: 'webhook' }] });
+    let stored: string | undefined;
+    const cache: KeyDocumentCache = {
+      get: () => Promise.resolve(stored),
+      set: (_key, value) => {
+        stored = value;
+        return Promise.resolve();
+      },
+    };
+    const fetch = vi.fn(() => Promise.resolve(new Response(keyDocument)));
+    const options = { authority: 'https://partners.anis.ly', fetch, documentCache: cache };
+    const source = new HttpSigningKeySource(options);
+    const fetched = await source.get();
+    expect(fetched.keys[0]).toMatchObject({ purpose: 'webhook' });
+    expect(await source.get()).toBe(fetched);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect((await source.refresh()).keys[0]).toMatchObject({ purpose: 'webhook' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect((await new HttpSigningKeySource(options).get()).keys[0]).toMatchObject({ purpose: 'webhook' });
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

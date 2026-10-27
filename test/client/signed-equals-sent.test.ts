@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { AnisPartnersClient } from '../../src/client.js';
 import { Money } from '../../src/models/money.js';
 import { arrayBufferOf } from '../../src/internal/bytes.js';
+import { endpoint, meterIntent, rechargeIntent, accepted, eventAccepted } from '../operations/product-test-support.js';
 import { signedFetchDouble } from '../support/signed-fetch.js';
 
 const keyId = 'a9cb2df1-5a48-449b-8c8a-1b20a5b7f433';
@@ -10,6 +11,61 @@ const walletId = '2f1c8a94-6d37-4e52-b8a1-0c9e5d3f7b26';
 const operationId = 'b26bf827-8484-44aa-987a-b033e4cfa401';
 
 describe('signed request wire bytes', () => {
+  it.each([
+    'meter create',
+    'meter resume',
+    'direct recharge create',
+    'direct recharge resume',
+    'recipient update',
+    'endpoint set',
+    'endpoint test',
+    'event redeliver',
+  ] as const)('signs exactly the bytes sent for %s', async (method) => {
+    const { client, requests, verifyRequest } = await setup();
+    switch (method) {
+      case 'meter create':
+        await client.meterCharges.create(walletId, operationId, meterIntent);
+        break;
+      case 'meter resume':
+        await client.meterCharges.resume(walletId, operationId, meterIntent);
+        break;
+      case 'direct recharge create':
+        await client.directRecharges.create(walletId, operationId, rechargeIntent);
+        break;
+      case 'direct recharge resume':
+        await client.directRecharges.resume(walletId, operationId, rechargeIntent);
+        break;
+      case 'recipient update':
+        await client.directRecharges.updateRecipient(operationId, { recipient: rechargeIntent.recipient });
+        break;
+      case 'endpoint set':
+        await client.webhookEndpoint.set({ url: endpoint.url });
+        break;
+      case 'endpoint test':
+        await client.webhookEndpoint.test();
+        break;
+      case 'event redeliver':
+        await client.webhookEvents.redeliver(operationId);
+        break;
+    }
+    const purchase = method.includes('create') || method.includes('resume');
+    await verifyRequest(requests[0], purchase ? 'order' : 'mutation');
+    if (!purchase) expect(new Headers(requests[0]?.init.headers).has('Idempotency-Key')).toBe(false);
+    if (method === 'endpoint test' || method === 'event redeliver')
+      expect(new TextDecoder().decode(requests[0]?.body)).toBe('{}');
+  });
+
+  it('signs the new filtered collection query exactly as it is sent', async () => {
+    const { client, requests, verifyRequest } = await setup();
+    await client.meterCharges.getMeterChargesPage(walletId, {
+      meterNumber: '000123',
+      cursor: '+/=& عربي',
+      from: new Date('2026-10-01T00:00:00Z'),
+      pageSize: 50,
+    });
+    await verifyRequest(requests[0], 'read');
+    expect(requests[0]?.url.searchParams.get('cursor')).toBe('+/=& عربي');
+  });
   it('keeps a non-default authority port in the request signature base', async () => {
     const { client, requests, verifyRequest } = await setup('https://PARTNERS.EXAMPLE:8443');
     await client.profile.get();
@@ -64,7 +120,22 @@ async function setup(authority = 'https://PARTNERS.EXAMPLE:443') {
       );
     },
   };
-  const fake = await signedFetchDouble((url) => {
+  const fake = await signedFetchDouble((url, init) => {
+    if (url.pathname.endsWith('/meter-charges'))
+      return init.method === 'POST'
+        ? { status: 202, body: JSON.stringify(accepted('meterCharge', operationId)) }
+        : { body: '{"items":[],"nextCursor":null}' };
+    if (url.pathname.endsWith('/direct-recharges'))
+      return { status: 202, body: JSON.stringify(accepted('directRecharge', operationId)) };
+    if (url.pathname.endsWith('/recipient'))
+      return {
+        status: 202,
+        body: JSON.stringify(accepted('directRecharge', operationId)),
+        headers: { Location: `/v1/direct-recharges/${operationId}` },
+      };
+    if (url.pathname.endsWith('/webhook-endpoint')) return { body: JSON.stringify(endpoint) };
+    if (url.pathname.endsWith('/test') || url.pathname.endsWith('/redeliver'))
+      return { status: 202, body: JSON.stringify({ ...eventAccepted, id: operationId }) };
     if (url.pathname.endsWith('/wallets')) return { body: '{"items":[]}' };
     if (url.pathname.endsWith('/reveal')) return { body: `{"soldCardId":"${operationId}"}` };
     if (url.pathname.endsWith('/diagnostics/signature'))

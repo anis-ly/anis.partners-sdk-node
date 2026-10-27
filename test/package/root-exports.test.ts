@@ -8,6 +8,69 @@ const require = createRequire(import.meta.url);
 const commonJsSdk = require('@anis-ly/partners') as typeof PartnerSdk;
 
 describe('package root exports', () => {
+  it('exports every new resource, product parser and webhook verifier', () => {
+    for (const symbol of [
+      'MeterChargeOperations',
+      'DirectRechargeProductOperations',
+      'DirectRechargeOperations',
+      'WebhookEndpointOperations',
+      'WebhookEventOperations',
+      'parseProductPage',
+      'parseMeterPackage',
+      'parseMeterCharge',
+      'parseMeterChargeAccepted',
+      'parseMeterChargeSummary',
+      'parseMeterChargePackage',
+      'parseMeterToken',
+      'parseMeterTax',
+      'parseMeterReceipt',
+      'parseMeterFailure',
+      'parseMeterRefund',
+      'parseMeterChargeStatus',
+      'parseMeterRefundStatus',
+      'parseMeterFailureCode',
+      'parseDirectRechargeProductType',
+      'parseDirectRechargeFieldKind',
+      'parseDirectRechargeFieldFor',
+      'parseDirectRechargeAmountIn',
+      'parseDirectRechargeProduct',
+      'parseDirectRechargeProductSummary',
+      'parseDirectRechargeCategory',
+      'parseDirectRechargeLimits',
+      'parseDirectRechargeCurrency',
+      'parseDirectRechargePayout',
+      'parseDirectRechargeRecipientField',
+      'parseDirectRechargeLocation',
+      'parseDirectRechargeQuote',
+      'parseDirectRecharge',
+      'parseDirectRechargeAccepted',
+      'parseDirectRechargeSummary',
+      'parseDirectRechargeStatus',
+      'parseDirectRechargeRecipientInput',
+      'parseDirectRechargeRecipientValue',
+      'parseDirectRechargeProductReference',
+      'parseDirectRechargePartialRefund',
+      'parseWebhookEndpoint',
+      'parseWebhookEventAccepted',
+      'parseWebhookEvent',
+      'parseWebhookEnvelope',
+      'parseWebhookEventType',
+      'parseWebhookEndpointStatus',
+      'parseWebhookDeliveryStatus',
+      'parseWebhookFailureKind',
+      'PartnerWebhookVerifier',
+      'UnverifiableWebhookError',
+    ])
+      expect(PartnerSdk).toHaveProperty(symbol);
+    const clientType = (client: PartnerSdk.AnisPartnersClient) => [
+      client.meterCharges,
+      client.directRechargeProducts,
+      client.directRecharges,
+      client.webhookEndpoint,
+      client.webhookEvents,
+    ];
+    expect(clientType).toBeTypeOf('function');
+  });
   it('exports the client surface without transport or verifier internals', () => {
     expect(PartnerSdk.AnisPartnersClient).toBeDefined();
     expect(PartnerSdk.PemP256Signer).toBeDefined();

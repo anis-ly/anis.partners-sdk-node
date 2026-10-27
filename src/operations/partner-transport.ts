@@ -16,7 +16,7 @@ import { safeCounter, safeHistogram, safeLog, safeSpan, withSafeSpan } from '../
 import { MalformedResponseError } from '../errors/malformed-response-error.js';
 import { SigningKeyDocumentUnavailableError } from '../errors/signing-key-document-unavailable-error.js';
 
-const SDK_USER_AGENT = 'anis-partners-sdk-node/2.1.0';
+const SDK_USER_AGENT = 'anis-partners-sdk-node/2.2.0';
 
 /** Frozen request settings used by all route groups. */
 export interface TransportOptions extends ValidatedClientOptions {
@@ -40,6 +40,11 @@ export class PartnerTransport {
   /** Configured bounded telemetry name for this client instance. */
   get clientName(): string {
     return this.settings.name;
+  }
+
+  /** Trusted external origin used to validate signed operation read locations. */
+  get authorityOrigin(): string {
+    return this.settings.authority.origin;
   }
 
   private readonly requestSigner?: PartnerRequestSigner;

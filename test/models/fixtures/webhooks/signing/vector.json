@@ -1,0 +1,14 @@
+{
+  "description": "TEST ONLY scalar 1; production keys never leave Key Vault",
+  "privateScalarHex": "0000000000000000000000000000000000000000000000000000000000000001",
+  "x": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY",
+  "y": "T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+  "created": 1792484040,
+  "expires": 1792484340,
+  "kid": "partner-webhook-signing/0123456789abcdef0123456789abcdef",
+  "bodyUtf8": "{\"id\":\"4bceba8e-55d1-59ec-b560-6c1e08f2ae3a\",\"type\":\"meterCharge.succeeded\",\"occurredAt\":\"2026-10-20T08:13:02Z\",\"applicationId\":\"9b2d1241-413e-4ae8-ae32-b15c58dbe101\",\"data\":{\"completedAt\":\"2026-10-20T08:13:02Z\",\"createdAt\":\"2026-10-20T08:12:44Z\",\"externalReference\":\"POS-77-INV-1093\",\"meterNumber\":\"0268000710262\",\"operationId\":\"3c1e9b7a-0d42-4f5e-8a61-2b9c7d0e5f13\",\"package\":{\"gecolPackageName\":\"PKG_100\",\"id\":\"5f3b8c21-5f3b-4c21-8f3b-5f3b8c215f3b\",\"name\":\"باقة 100 دينار\"},\"personalPrice\":{\"amount\":\"100.000\",\"currency\":\"LYD\"},\"receipt\":{\"creditedAmount\":\"88.640\",\"receiptNumber\":\"260020103744\",\"taxes\":[{\"amount\":\"5.000\",\"description\":\"ضريبة الاستهلاك\"},{\"amount\":\"3.860\",\"description\":\"رسوم الخدمة\"}],\"tokens\":[{\"code\":\"1234 5678 9012 3456 7890\",\"description\":\"Key change token 1\",\"label\":\"KCT1\",\"sequence\":1},{\"code\":\"2345 6789 0123 4567 8901\",\"description\":\"Key change token 2\",\"label\":\"KCT2\",\"sequence\":2},{\"code\":\"5821 0034 7719 2265 0418\",\"description\":\"Credit token\",\"label\":\"STS\",\"sequence\":3}]},\"status\":\"succeeded\",\"total\":{\"amount\":\"97.500\",\"currency\":\"LYD\"},\"walletId\":\"71825266-7182-4182-8182-718252667182\"}}",
+  "contentDigest": "sha-256=:5eOPolCTWCigpjkrmQotTNZ5SIRvsvUX2Bm6HpP3DJQ=:",
+  "signatureInput": "sig1=(\"@method\" \"@target-uri\" \"content-digest\" \"webhook-id\" \"anis-webhook-attempt\" \"anis-application-id\");created=1792484040;expires=1792484340;keyid=\"partner-webhook-signing/0123456789abcdef0123456789abcdef\";alg=\"ecdsa-p256-sha256\";tag=\"anis-partner-webhook-v1\"",
+  "signatureBase": "\"@method\": POST\n\"@target-uri\": https://pos.example.ly/hooks/anis\n\"content-digest\": sha-256=:5eOPolCTWCigpjkrmQotTNZ5SIRvsvUX2Bm6HpP3DJQ=:\n\"webhook-id\": 4bceba8e-55d1-59ec-b560-6c1e08f2ae3a\n\"anis-webhook-attempt\": 1\n\"anis-application-id\": 9b2d1241-413e-4ae8-ae32-b15c58dbe101\n\"@signature-params\": (\"@method\" \"@target-uri\" \"content-digest\" \"webhook-id\" \"anis-webhook-attempt\" \"anis-application-id\");created=1792484040;expires=1792484340;keyid=\"partner-webhook-signing/0123456789abcdef0123456789abcdef\";alg=\"ecdsa-p256-sha256\";tag=\"anis-partner-webhook-v1\"",
+  "signature": "sig1=:Sm8JgMPGsDVeO74AWNz0+8qZNgIxptB5dpBU/kMIrMbtZsCsP856wLnhCOld+4qSgrlb9lMBIZsFHJMPrrbJUg==:"
+}

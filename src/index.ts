@@ -77,7 +77,10 @@ export type { ClientOptions, ValidatedClientOptions } from './client-options.js'
 export { validateClientOptions } from './client-options.js';
 export { AnisPartnersClient } from './client.js';
 export type { AnisPartnersClientCreateOptions } from './client.js';
-export type { KeyDocumentCache } from './verification/http-signing-key-source.js';
+export { HttpSigningKeySource } from './verification/http-signing-key-source.js';
+export type { KeyDocumentCache, HttpSigningKeySourceOptions } from './verification/http-signing-key-source.js';
+export type { SigningKeySource, SigningKeyRequestOptions } from './verification/signing-key-source.js';
+export type { Clock } from './internal/clock.js';
 export type { CallOptions, PageOptions, ApplicationSuspended, KeyRevoked } from './operations/operations.js';
 export {
   AccessOperations,
@@ -90,3 +93,30 @@ export {
 } from './operations/operations.js';
 export type { PartnerLogger } from './observability/logger.js';
 export { AnisPartnersTelemetry } from './observability/telemetry-names.js';
+
+export * from './models/meter-charges.js';
+export * from './models/direct-recharge-products.js';
+export * from './models/direct-recharges.js';
+export * from './models/webhooks.js';
+export * from './operations/product-results.js';
+export {
+  MeterChargeOperations,
+  DirectRechargeProductOperations,
+  DirectRechargeOperations,
+  WebhookEndpointOperations,
+  WebhookEventOperations,
+} from './operations/operations.js';
+export type {
+  MeterChargesOptions,
+  DirectRechargeProductsOptions,
+  DirectRechargeLocationsOptions,
+  DirectRechargesOptions,
+  WebhookEventsOptions,
+} from './operations/operations.js';
+export { PartnerWebhookVerifier } from './verification/partner-webhook-verifier.js';
+export type { VerifiableWebhook, WebhookReceiverOptions } from './verification/verifiable-webhook.js';
+export type { WebhookVerificationFailure } from './verification/webhook-verification-failure.js';
+export { UnverifiableWebhookError } from './verification/unverifiable-webhook-error.js';
+
+export { parseProductPage } from './models/product-page.js';
+export type { ProductPage } from './models/product-page.js';

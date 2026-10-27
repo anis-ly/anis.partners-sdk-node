@@ -10,10 +10,10 @@ The `@anis-ly/partners` package calls the Anis Partner API with signed requests,
 > https://developers.anis.ly.
 
 ```bash
-npm install @anis-ly/partners@2
+npm install @anis-ly/partners@2.2.0
 ```
 
-Version 2.1.0 uses the `anis-response-v2` verification profile. 1.x is deprecated — upgrade.
+Version 2.2.0 uses the `anis-response-v2` verification profile. 1.x is deprecated — upgrade.
 
 The response signing-key document is cached for at most 5 minutes (default and maximum 300 seconds), and unknown key ids trigger at most one re-fetch every 30 seconds per client (key source instance). Anis publishes retired keys for 90 days after retirement and keeps compromised key ids in `revoked[]` for 90 days. See [security and key custody](docs/security.md) for the verification rules.
 
@@ -67,6 +67,7 @@ CommonJS users can load the package with: `const { AnisPartnersClient } = requir
 - [Orders and recovery](https://github.com/anis-ly/anis.partners-sdk-node/blob/main/docs/orders-and-recovery.md) — safe purchase retries and the five outcomes
 - [Routes and permissions](https://github.com/anis-ly/anis.partners-sdk-node/blob/main/docs/routes-and-permissions.md) — all routes, permissions, profiles, and bodies
 - [Errors](https://github.com/anis-ly/anis.partners-sdk-node/blob/main/docs/errors.md) — stable error codes and typed errors
+- [Webhooks](https://github.com/anis-ly/anis.partners-sdk-node/blob/main/docs/webhooks.md) — verify notifications, answer the verification challenge, and avoid duplicates
 - [Security and key custody](https://github.com/anis-ly/anis.partners-sdk-node/blob/main/docs/security.md)
 - [Observability](https://github.com/anis-ly/anis.partners-sdk-node/blob/main/docs/observability.md)
 - [Runnable console sample](https://github.com/anis-ly/anis.partners-sdk-node/blob/main/samples/console/README.md)
@@ -76,13 +77,129 @@ CommonJS users can load the package with: `const { AnisPartnersClient } = requir
 - The caller supplies and persists each order id. A timeout is unresolved, so recovery repeats the same id and body; it never silently creates a second purchase.
 - `OrderResult` is a discriminated union. Credentials appear only on `completed`; a `replayed` result is state only.
 - Credential objects and completed order results contain secret fields. `JSON.stringify` includes voucher and serial values; do not log or serialize them casually. Persist released credentials in a secret store with owner-only permissions.
-- A refusal that may follow an earlier attempt is `unknown`; a final business refusal is `notPlaced`.
+- A refusal that may follow an earlier attempt is `unknown`; a final business refusal is `notPlaced`. For meter charges and direct recharges an `idempotency_conflict` is `unknown`: read the operation by its id before any new attempt, and note that `get` can throw the recorded refusal (`AnisApiError` with `isReplayed`), which means the attempt was not placed.
 - Every request is signed. Every answer that moves money, delivers card codes or establishes a key — access stops, orders, order reads, card and invoice reveals, enrollment, and the signature self-test — is verified before the SDK returns or parses it, success and refusal alike; one that arrives unsigned or fails verification is discarded, and an unverifiable order has an unknown outcome. Profile, wallet, catalogue and owned-card reads are information answers that Anis does not sign; the SDK reads them as received over HTTPS. Which routes are signed is fixed per route in the SDK, never guessed from the answer.
 - Logging and telemetry are opt-in listeners and omit signatures, signature bases, nonces, enrollment tokens, and credentials.
 
 ## What is covered
 
-All 22 published API routes are grouped under `access`, `profile`, `wallets`, `catalogue`, `orders`, `ownedCards`, and `diagnostics`, with `AnisEnrollmentClient` for enrollment. Lists can be consumed page by page with `listPage({ cursor, signal })` or walked as an `AsyncIterable` with `list()`.
+The published API routes are grouped under `access`, `profile`, `wallets`, `catalogue`, `orders`, `ownedCards`, `diagnostics`, `meterCharges`, `directRechargeProducts`, `directRecharges`, `webhookEndpoint` and `webhookEvents`, with `AnisEnrollmentClient` for enrollment. Lists can be consumed page by page with `listPage({ cursor, signal })` or walked as an `AsyncIterable` with `list()`.
+
+## Meter charges, direct recharge and notifications
+
+Version 2.2.0 adds three products on top of card orders. Each money-moving call follows the same rule as orders: you create and persist the operation id and the exact request before sending, and an interrupted call is recovered by resuming with the same id and request.
+
+### Charge a meter
+
+`client.meterCharges` lists the packages priced for a wallet, charges a meter, and reads the receipt. A successful charge carries the receipt with every token in the order Anis returned it. A failed charge says whether the money was refunded, not charged, or is still waiting to be refunded.
+
+```ts
+import { AnisPartnersClient, PemP256Signer } from '@anis-ly/partners';
+import { writeFile } from 'node:fs/promises';
+
+const setting = (name: string) => {
+  const value = process.env[name];
+  if (!value) throw new Error(`Set ${name}.`);
+  return value;
+};
+const signer = (await PemP256Signer.fromPemFile('/secure/partner-key.pem')).forKey(setting('SAMPLE_KEY_ID'));
+const client = AnisPartnersClient.create({ options: { authority: setting('ANIS_PARTNERS_AUTHORITY') }, signer });
+const walletId = setting('WALLET_ID');
+
+let selected;
+for await (const candidate of client.meterCharges.getMeterPackages(walletId)) {
+  selected = candidate;
+  break;
+}
+if (!selected) throw new Error('No package is offered to this wallet.');
+const operationId = crypto.randomUUID();
+const request = {
+  packageId: selected.id,
+  meterNumber: '0268000710262',
+  expectedTotal: selected.unitPrice,
+};
+await writeFile('meter-intent.json', JSON.stringify({ operationId, walletId, request }), { flag: 'wx', mode: 0o600 });
+const result = await client.meterCharges.create(walletId, operationId, request);
+if (result.kind === 'final') console.log(result.meterCharge.status, result.meterCharge.receipt?.receiptNumber);
+else if (result.kind === 'processing' || result.kind === 'unknown')
+  console.log('Resume', result.operationId, result.suggestedDelayMs);
+else console.log('Not placed', result.refusal.code);
+```
+
+The meter number is a string so leading zeros are kept. Tokens and credited amounts are secrets and exact decimal strings; do not log them. `client.meterCharges.getMeterCharges(walletId, options)` walks a wallet's charge history (31 days at a time) without receipts.
+
+### Direct recharge
+
+`client.directRechargeProducts` lists products, their recipient fields, locations and a quote. `client.directRecharges` places the direct recharge, recovers it, reads it and, while Anis has paused it for bad recipient data (`suspendedDataError`), corrects the recipient.
+
+```ts
+import { open } from 'node:fs/promises';
+import { AnisPartnersClient, PemP256Signer } from '@anis-ly/partners';
+
+const setting = (name: string) => {
+  const value = process.env[name];
+  if (!value) throw new Error(`Set ${name}.`);
+  return value;
+};
+const signer = (await PemP256Signer.fromPemFile('/secure/partner-key.pem')).forKey(setting('SAMPLE_KEY_ID'));
+const client = AnisPartnersClient.create({ options: { authority: setting('ANIS_PARTNERS_AUTHORITY') }, signer });
+const [walletId, productId] = [setting('WALLET_ID'), setting('PRODUCT_ID')];
+
+const product = await client.directRechargeProducts.get(walletId, productId);
+console.log(product.recipientFields.map((field) => field.key));
+const quote = await client.directRechargeProducts.quote(walletId, productId, '1500.000', 'fx');
+const operationId = crypto.randomUUID();
+const request = {
+  productId,
+  payoutAmount: '1500.000',
+  expectedTotal: quote.total,
+  recipient: [{ key: 'recipient_number', value: setting('RECIPIENT_NUMBER') }],
+};
+// Exclusive creation prevents an accidental rerun from replacing an unresolved purchase.
+const intentFile = await open('recharge-intent.json', 'wx', 0o600);
+try {
+  await intentFile.writeFile(JSON.stringify({ operationId, walletId, request }));
+  await intentFile.sync();
+} finally {
+  await intentFile.close();
+}
+const result = await client.directRecharges.create(walletId, operationId, request);
+if (result.kind === 'processing' || result.kind === 'unknown') console.log('Resume', result.operationId);
+```
+
+After a restart, restore the saved intent and reconstruct its Money value before resuming. Wait the previous result's `suggestedDelayMs` when available. Keep the file until you have recorded a final outcome; an existing file means recover it rather than create another purchase.
+
+```ts
+import { readFile } from 'node:fs/promises';
+import { AnisPartnersClient, Money, PemP256Signer } from '@anis-ly/partners';
+
+const authority = process.env.ANIS_PARTNERS_AUTHORITY;
+const keyId = process.env.SAMPLE_KEY_ID;
+if (!authority || !keyId) throw new Error('Set ANIS_PARTNERS_AUTHORITY and SAMPLE_KEY_ID.');
+const signer = (await PemP256Signer.fromPemFile('/secure/partner-key.pem')).forKey(keyId);
+const client = AnisPartnersClient.create({ options: { authority }, signer });
+const saved = JSON.parse(await readFile('recharge-intent.json', 'utf8')) as {
+  operationId: string;
+  walletId: string;
+  request: {
+    productId: string;
+    payoutAmount: string;
+    expectedTotal: { amount: string; currency: string };
+    recipient: { key: string; value: string }[];
+  };
+};
+const resumed = await client.directRecharges.resume(saved.walletId, saved.operationId, {
+  ...saved.request,
+  expectedTotal: Money.of(saved.request.expectedTotal.amount, saved.request.expectedTotal.currency),
+});
+console.log(resumed.kind);
+```
+
+A recipient correction is a signed change: it uses the existing operation id and is never replayed automatically. `client.directRecharges.updateRecipient(operationId, { recipient })` returns a `DirectRechargeProcessing` (`{ kind: 'processing', operationId, suggestedDelayMs, location, accepted }`), the same type a 202 create answers, with the signed acknowledgement in `accepted` and `location` set. `suggestedDelayMs` comes from Retry-After (default 5000). The signed HTTP 202 body contains only `operationId`, `operationType: 'directRecharge'` and `status: 'processing'`; `location` is the verified Location header pointing to that operation's read on the configured authority. No direct recharge body is returned. Read with `client.directRecharges.get(result.operationId)` or wait for a `directRecharge.*` webhook to observe the correction. If the change fails in transit, read the operation before deciding to send it again.
+
+### Notifications
+
+`client.webhookEndpoint` sets the URL Anis delivers to, reads its state, and queues a test notification. `client.webhookEvents` lists deliveries and asks Anis to deliver one again. Your receiver verifies each delivery with `PartnerWebhookVerifier` before it reads the contents; see [webhooks](docs/webhooks.md).
 
 ## How it is proven
 

@@ -22,6 +22,16 @@ const keyDocument = '/.well-known/partner-signing-keys.json';
 
 /** The information reads Anis answers without a response signature. */
 const unsignedReads: { route: string; profile?: SignatureProfile }[] = [
+  { route: '/v1/wallets/{walletId}/meter-packages', profile: 'SafeRead' },
+  { route: '/v1/wallets/{walletId}/meter-charges', profile: 'SafeRead' },
+  { route: '/v1/wallets/{walletId}/direct-recharge-products', profile: 'SafeRead' },
+  { route: '/v1/wallets/{walletId}/direct-recharge-products/{productId}', profile: 'SafeRead' },
+  { route: '/v1/wallets/{walletId}/direct-recharge-products/{productId}/locations', profile: 'SafeRead' },
+  { route: '/v1/wallets/{walletId}/direct-recharge-products/{productId}/quote', profile: 'SafeRead' },
+  { route: '/v1/wallets/{walletId}/direct-recharges', profile: 'SafeRead' },
+  { route: '/v1/webhook-endpoint', profile: 'SafeRead' },
+  { route: '/v1/webhook-events', profile: 'SafeRead' },
+
   { route: '/v1/profile', profile: 'SafeRead' },
   { route: '/v1/wallets', profile: 'SafeRead' },
   { route: '/v1/wallets/{walletId}', profile: 'SafeRead' },
@@ -35,6 +45,15 @@ const unsignedReads: { route: string; profile?: SignatureProfile }[] = [
 
 /** The routes whose every answer, success and refusal, Anis signs. */
 const signedRoutes: { method: string; route: string; profile?: SignatureProfile }[] = [
+  { method: 'POST', route: '/v1/wallets/{walletId}/meter-charges', profile: 'OrderMutation' },
+  { method: 'GET', route: '/v1/meter-charges/{operationId}', profile: 'SafeRead' },
+  { method: 'POST', route: '/v1/wallets/{walletId}/direct-recharges', profile: 'OrderMutation' },
+  { method: 'GET', route: '/v1/direct-recharges/{operationId}', profile: 'SafeRead' },
+  { method: 'PATCH', route: '/v1/direct-recharges/{operationId}/recipient', profile: 'BodylessNonceMutation' },
+  { method: 'PUT', route: '/v1/webhook-endpoint', profile: 'BodylessNonceMutation' },
+  { method: 'POST', route: '/v1/webhook-endpoint/test', profile: 'BodylessNonceMutation' },
+  { method: 'POST', route: '/v1/webhook-events/{eventId}/redeliver', profile: 'BodylessNonceMutation' },
+
   { method: 'POST', route: '/v1/wallets/{walletId}/orders', profile: 'OrderMutation' },
   { method: 'GET', route: '/v1/orders/{operationId}', profile: 'SafeRead' },
   { method: 'POST', route: '/v1/wallets/{walletId}/owned-cards/{soldCardId}/reveal', profile: 'BodylessNonceMutation' },

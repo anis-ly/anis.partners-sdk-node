@@ -11,6 +11,11 @@ import {
   AccessOperations,
   CatalogueOperations,
   DiagnosticsOperations,
+  MeterChargeOperations,
+  DirectRechargeProductOperations,
+  DirectRechargeOperations,
+  WebhookEndpointOperations,
+  WebhookEventOperations,
   OrderOperations,
   OwnedCardOperations,
   ProfileOperations,
@@ -54,12 +59,28 @@ export class AnisPartnersClient {
   /** Runs the side-effect-free signature check. */
   readonly diagnostics: DiagnosticsOperations;
 
+  /** Reads packages and manages caller-keyed meter charges. */
+  readonly meterCharges: MeterChargeOperations;
+  /** Reads direct recharge products, locations and quotes. */
+  readonly directRechargeProducts: DirectRechargeProductOperations;
+  /** Creates, recovers and corrects direct recharges. */
+  readonly directRecharges: DirectRechargeOperations;
+  /** Manages the application's webhook endpoint. */
+  readonly webhookEndpoint: WebhookEndpointOperations;
+  /** Reads delivery state and requests explicit redelivery. */
+  readonly webhookEvents: WebhookEventOperations;
+
   private constructor(transport: PartnerTransport) {
     this.access = new AccessOperations(transport);
     this.profile = new ProfileOperations(transport);
     this.wallets = new WalletOperations(transport);
     this.catalogue = new CatalogueOperations(transport);
     this.orders = new OrderOperations(transport);
+    this.meterCharges = new MeterChargeOperations(transport);
+    this.directRechargeProducts = new DirectRechargeProductOperations(transport);
+    this.directRecharges = new DirectRechargeOperations(transport);
+    this.webhookEndpoint = new WebhookEndpointOperations(transport);
+    this.webhookEvents = new WebhookEventOperations(transport);
     this.ownedCards = new OwnedCardOperations(transport);
     this.diagnostics = new DiagnosticsOperations(transport);
   }
