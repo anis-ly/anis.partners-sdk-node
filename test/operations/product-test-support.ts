@@ -22,6 +22,7 @@ export const rechargeIntent = {
   recipient: [{ key: 'recipient_number', value: '01012345678' }],
   note: 'Family support',
   externalReference: 'POS-77-TR-551',
+  contactPhone: '0912345678',
 };
 export const accepted = (operationType: 'meterCharge' | 'directRecharge', operationId: string) => ({
   operationId,
