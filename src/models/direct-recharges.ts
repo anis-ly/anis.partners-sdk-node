@@ -45,6 +45,13 @@ export interface CreateDirectRechargeRequest {
   /** Dynamic recipient inputs. */ recipient: readonly DirectRechargeRecipientInput[];
   /** Optional owner note. */ note?: string | undefined;
   /** Partner reconciliation reference. */ externalReference?: string | undefined;
+  /**
+   * Optional phone the Anis exchanges team calls about this direct recharge: a Libyan mobile (`09[1-5]` plus 7
+   * digits) or an international number (`+` or `00`, then 8 to 15 digits); spaces, `-`, `(` and `)` are ignored.
+   * When omitted, Anis uses the phone saved for the partner. It is part of the request's idempotency: the same
+   * key with a different value is an `idempotency_conflict`.
+   */
+  contactPhone?: string | undefined;
 }
 /** Recipient correction while the owner is suspended for bad data. */
 export interface UpdateDirectRechargeRecipientRequest {

@@ -59,7 +59,7 @@ const isSdkRoute = (method: string, path: string) => !STAGING_TEST_ONLY_ROUTES.i
 describe('contract drift', () => {
   it('pins the final owner contract bytes', () => {
     for (const [file, expected] of [
-      ['partner-public-v1.json', '581ea3de7840266fd993e7994d79a38b747a318f4bbbd0e4cbbc4a55e50b22c8'],
+      ['partner-public-v1.json', '1eb3aeaf583cf3c0d1cd01b68e697e241ced5995a002d61cf26e11325ad106e0'],
       ['error-catalogue.json', '4048623c5c72688fe7debc4ac62d6294025f2e28403ad29f5e7716e8b2050229'],
     ] as const)
       expect(createHash('sha256').update(readFileSync(new URL(`../../contracts/${file}`, import.meta.url))).digest('hex'))
