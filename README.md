@@ -10,10 +10,10 @@ The `@anis-ly/partners` package calls the Anis Partner API with signed requests,
 > https://developers.anis.ly.
 
 ```bash
-npm install @anis-ly/partners@2.2.0
+npm install @anis-ly/partners@2.3.0
 ```
 
-Version 2.2.0 uses the `anis-response-v2` verification profile. 1.x is deprecated — upgrade.
+Version 2.3.0 uses the `anis-response-v2` verification profile. 1.x is deprecated — upgrade.
 
 The response signing-key document is cached for at most 5 minutes (default and maximum 300 seconds), and unknown key ids trigger at most one re-fetch every 30 seconds per client (key source instance). Anis publishes retired keys for 90 days after retirement and keeps compromised key ids in `revoked[]` for 90 days. See [security and key custody](docs/security.md) for the verification rules.
 
