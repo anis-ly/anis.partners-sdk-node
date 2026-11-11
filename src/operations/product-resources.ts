@@ -396,6 +396,7 @@ export class DirectRechargeOperations {
       recipient,
       ...(request.note === undefined ? {} : { note: request.note }),
       ...(request.externalReference === undefined ? {} : { externalReference: request.externalReference }),
+      ...(request.contactPhone === undefined ? {} : { contactPhone: request.contactPhone }),
     }));
     const result = await sendProduct(
       this.transport,

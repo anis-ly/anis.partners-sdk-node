@@ -249,6 +249,22 @@ describe('direct recharges', () => {
     expect(headers.map((row) => row.get('Idempotency-Key'))).toEqual([rechargeId, rechargeId]);
     expect(headers[0]?.get('Nonce')).not.toBe(headers[1]?.get('Nonce'));
   });
+  it('omits contactPhone from the create body when it is not supplied', async () => {
+    const fake = await signedFetchDouble(() => ({
+      status: 202,
+      body: JSON.stringify(accepted('directRecharge', rechargeId)),
+    }));
+    const { productId, payoutAmount, expectedTotal, recipient } = rechargeIntent;
+    await clientFor(fake.fetcher).directRecharges.create(walletId, rechargeId, {
+      productId,
+      payoutAmount,
+      expectedTotal,
+      recipient,
+    });
+    expect(Object.keys(JSON.parse(new TextDecoder().decode(fake.requests[0]?.body)) as object)).not.toContain(
+      'contactPhone',
+    );
+  });
   it.each(['awaitingPayment', 'pending', 'inProgress', 'suspendedDataError', 'rejectedAwaitingRefund', 'future'])(
     'keeps full owner state %s processing, including partial refunds',
     async (status) => {
